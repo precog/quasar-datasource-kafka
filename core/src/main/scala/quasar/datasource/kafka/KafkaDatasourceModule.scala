@@ -85,12 +85,12 @@ object KafkaDatasourceModule extends LightweightDatasourceModule {
 //          .withBlocker(Blocker.liftExecutionContext(ec))
 
         val decoder = kafkaConfig.decoder match {
-          case Decoder.RawKey => Consumer.RawKey[F]
-          case Decoder.RawValue => Consumer.RawValue[F]
+          case Decoder.RawKey => KafkaConsumer.RawKey[F]
+          case Decoder.RawValue => KafkaConsumer.RawValue[F]
         }
 
         Resource.pure[F, Either[DatasourceError.InitializationError[Json], DS[F]]](
-          KafkaDatasource(kafkaConfig, consumerSettings, decoder).asRight)
+          KafkaDatasource(kafkaConfig, KafkaConsumerBuilder(kafkaConfig, consumerSettings, decoder)).asRight)
 
       case Left((msg, _))  =>
         DatasourceError

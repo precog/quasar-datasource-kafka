@@ -16,14 +16,8 @@
 
 package quasar.datasource.kafka
 
-import slamdata.Predef._
-
 import cats.effect.Resource
-import fs2.Stream
 
-/**
- * Consumers will produce a stream fetching a topic.
- */
-trait Consumer[F[_]] {
-  def fetch(topic: String): Resource[F, Stream[F, Byte]]
+trait ConsumerBuilder[F[_]] {
+  def mkConsumer: Resource[F, Consumer[F]]
 }

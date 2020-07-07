@@ -18,13 +18,13 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
+import cats.Applicative
 import cats.data.NonEmptyList
 import cats.effect._
 import cats.syntax.applicative._
 import cats.syntax.option._
 import eu.timepit.refined.auto._
 import fs2.Stream
-import fs2.kafka._
 import quasar.api.datasource.DatasourceType
 import quasar.api.resource.ResourcePath.Root
 import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
@@ -33,10 +33,9 @@ import quasar.connector.{MonadResourceErr, QueryResult, ResourceError}
 import quasar.contrib.scalaz.MonadError_
 import quasar.qscript.InterpretedRead
 
-final class KafkaDatasource[F[_]: ConcurrentEffect: ContextShift: Timer: MonadResourceErr, K, V](
+final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
     config: Config,
-    consumerSettings: ConsumerSettings[F, K, V],
-    decoder: RecordDecoder[F, K, V])
+    consumerBuilder: ConsumerBuilder[F])
     extends LightweightDatasource[Resource[F, ?], Stream[F, ?], QueryResult[F]]  {
 
   override def kind: DatasourceType = DatasourceType("kafka", 1L)
@@ -45,13 +44,11 @@ final class KafkaDatasource[F[_]: ConcurrentEffect: ContextShift: Timer: MonadRe
     NonEmptyList.of(Loader.Batch(BatchLoader.Full { (iRead: InterpretedRead[ResourcePath]) =>
       iRead.path.unsnoc match {
         case Some(Root -> ResourceName(topic)) if config.isTopic(topic) =>
-          val F: ConcurrentEffect[F] = ConcurrentEffect[F]
-          val stream = for {
-            groupId <- Resource.liftF(F.delay(f"${config.groupId}%s_${randomUuid().toString}%s"))
-            settings = consumerSettings.withGroupId(groupId)
-            bytes <- Consumer(settings, decoder).fetch(topic)
-          } yield bytes
-          stream.map(bytes => QueryResult.typed(config.format, bytes, iRead.stages))
+          for {
+            consumer <- consumerBuilder.mkConsumer
+            bytes <- consumer.fetch(topic)
+          } yield QueryResult.typed(config.format, bytes, iRead.stages)
+
         case _                                                          =>
           Resource.liftF(MonadError_[F, ResourceError].raiseError[QueryResult[F]](ResourceError.NotAResource(iRead.path)))
       }
@@ -87,10 +84,9 @@ final class KafkaDatasource[F[_]: ConcurrentEffect: ContextShift: Timer: MonadRe
 }
 
 object KafkaDatasource {
-  def apply[F[_]: ConcurrentEffect: ContextShift: Timer: MonadResourceErr, K, V](
+  def apply[F[_]: Applicative: MonadResourceErr](
       config: Config,
-      consumerSettings: ConsumerSettings[F, K, V],
-      decoder: RecordDecoder[F, K, V])
-      : KafkaDatasource[F, K, V] =
-    new KafkaDatasource(config, consumerSettings, decoder)
+      consumerBuilder: ConsumerBuilder[F])
+      : KafkaDatasource[F] =
+    new KafkaDatasource(config, consumerBuilder)
 }
