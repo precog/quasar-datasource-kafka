@@ -18,11 +18,15 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
-import cats.effect.{ConcurrentEffect, ContextShift, Resource, Timer}
-import fs2.Stream
-import fs2.kafka.{ConsumerSettings, consumerResource}
+import org.apache.kafka.common.TopicPartition
 
-class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
+import cats.Applicative
+import cats.effect._
+import cats.implicits._
+import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, consumerResource}
+import fs2.{Stream, kafka}
+
+class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K, V](
     settings: ConsumerSettings[F, K, V],
     decoder: RecordDecoder[F, K, V])
     extends Consumer[F] {
@@ -31,7 +35,28 @@ class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
     consumerResource[F]
       .using(settings)
       .evalTap(_.subscribeTo(topic))
-      .map(_.stream.flatMap(decoder))
+
+      .evalMap(getOffsets)
+      .map {
+        case (consumer, offsets) =>
+          consumer.partitionedStream
+            .map(_.takeThrough(isOffsetLimit(_, offsets)))
+            .parJoinUnbounded
+            .flatMap(decoder)
+      }
+  }
+
+  def getOffsets(consumer: kafka.KafkaConsumer[F, K, V]): F[(fs2.kafka.KafkaConsumer[F, K, V], Map[TopicPartition, Long])] = {
+    consumer.assignment.flatMap(consumer.endOffsets).map(consumer -> _)
+  }
+
+  def isOffsetLimit(committableRecord: CommittableConsumerRecord[F, K, V], offsets: Map[TopicPartition, Long]): Boolean = {
+    val record = committableRecord.record
+    val topic = record.topic
+    val partition = record.partition
+    val topicPartition = new TopicPartition(topic, partition)
+    val end = offsets(topicPartition)
+    record.offset >= end
   }
 }
 
