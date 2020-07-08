@@ -19,30 +19,47 @@ package quasar.datasource.kafka
 import slamdata.Predef._
 
 import cats.effect.{ConcurrentEffect, ContextShift, Resource, Timer}
-import fs2.kafka.ConsumerSettings
+import fs2.{Chunk, Stream}
+import fs2.kafka.{AutoOffsetReset, CommittableConsumerRecord, ConsumerSettings}
 import quasar.connector.MonadResourceErr
 
-class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : MonadResourceErr, K, V](
+class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : MonadResourceErr](
     config: Config,
-    consumerSettings: ConsumerSettings[F, K, V],
-    decoder: RecordDecoder[F, K, V])
+    decoder: Decoder)
     extends ConsumerBuilder[F] {
 
   def mkConsumer: Resource[F, Consumer[F]] = {
     val F: ConcurrentEffect[F] = ConcurrentEffect[F]
     Resource.liftF(F.delay(f"${config.groupId}%s_${randomUuid().toString}%s")) map { groupId =>
-      val settings = consumerSettings.withGroupId(groupId)
-      KafkaConsumer(settings, decoder)
+      // TODO: either get this to fail compilation if non-exhaustive, or move it somewhere it can return a configuration error
+      val recordDecoder = decoder match {
+        case Decoder.RawKey => KafkaConsumerBuilder.RawKey[F]
+        case Decoder.RawValue => KafkaConsumerBuilder.RawValue[F]
+      }
+
+      val consumerSettings = ConsumerSettings[F, Array[Byte], Array[Byte]]
+        .withAutoOffsetReset(AutoOffsetReset.Earliest)
+        .withBootstrapServers(config.bootstrapServers.toList.mkString(","))
+        .withGroupId(groupId)
+      //          .withBlocker(Blocker.liftExecutionContext(ec))
+
+      KafkaConsumer(consumerSettings, recordDecoder)
     }
   }
 }
 
 object KafkaConsumerBuilder {
 
-  def apply[F[_] : ConcurrentEffect : ContextShift : Timer : MonadResourceErr, K, V](
+  def apply[F[_] : ConcurrentEffect : ContextShift : Timer : MonadResourceErr](
       config: Config,
-      consumerSettings: ConsumerSettings[F, K, V],
-      decoder: RecordDecoder[F, K, V])
+      decoder: Decoder)
       : ConsumerBuilder[F] =
-    new KafkaConsumerBuilder(config, consumerSettings, decoder)
+    new KafkaConsumerBuilder(config, decoder)
+
+
+  def RawKey[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
+    (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) => Stream.chunk(Chunk.bytes(record.record.key))
+
+  def RawValue[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
+    (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) => Stream.chunk(Chunk.bytes(record.record.value))
 }

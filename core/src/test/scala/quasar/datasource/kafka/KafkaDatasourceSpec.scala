@@ -18,26 +18,133 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
-import cats.data.NonEmptyList
+import java.nio.charset.Charset
+
+import org.specs2.matcher.MatchResult
+
+import cats.Applicative
+import cats.data.{NonEmptyList, OptionT}
 import cats.effect.{IO, Resource}
-import fs2.Stream
+import fs2.{Chunk, Stream}
+import quasar.ScalarStages
 import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
+import quasar.connector._
+import quasar.connector.datasource.DatasourceSpec
 import quasar.connector.datasource.LightweightDatasourceModule.DS
-import quasar.connector.datasource.{Datasource, DatasourceSpec}
-import quasar.connector.{DataFormat, ResourceError}
 import quasar.contrib.scalaz.MonadError_
+import quasar.qscript.InterpretedRead
+import shims.applicativeToScalaz
 
 class KafkaDatasourceSpec extends DatasourceSpec[IO, Stream[IO, ?], ResourcePathType.Physical] {
+  import KafkaDatasourceSpec._
 
-  def mkDatasource(config: Config)
-      : Resource[IO, DS[IO]] = {
+  override def datasource: Resource[IO, DS[IO]] = mkDatasource(config)
 
-    import quasar.datasource.kafka.KafkaDatasourceSpec._
+  override val nonExistentPath: ResourcePath = ResourcePath.root() / ResourceName("other")
 
-//    implicit val timer = IO.timer(global)
+  override def gatherMultiple[A](g: Stream[IO, A]): IO[List[A]] = g.compile.toList
 
-    def mockConsumerBuilder[F[_]]: ConsumerBuilder[F] = new ConsumerBuilder[F] {
-      override def mkConsumer: Resource[F, Consumer[F]] = ???
+  "BatchLoader.Full" >> {
+    "read line delimited JSON topic a" >>* {
+      assertResultBytes(
+        datasource,
+        ResourcePath.root() / ResourceName("a"),
+        "abc".getBytes(Charset.forName("UTF-8")))
+    }
+
+    "read line delimited JSON topic b" >>* {
+      assertResultBytes(
+        datasource,
+        ResourcePath.root() / ResourceName("b"),
+        "bc".getBytes(Charset.forName("UTF-8")))
+    }
+
+    "read line delimited JSON topic c" >>* {
+      assertResultBytes(
+        datasource,
+        ResourcePath.root() / ResourceName("c"),
+        "c".getBytes(Charset.forName("UTF-8")))
+    }
+
+    "reading root raises ResourceError.NotAResource" >>* {
+      val path = ResourcePath.root()
+      val read = datasource.flatMap(_.loadFull(iRead(path)).value)
+
+      MonadResourceErr[IO].attempt(read.use(_ => IO.unit)).map(_.toEither must beLeft.like {
+        case ResourceError.NotAResource(_) => ok
+      })
+    }
+
+    "reading a non-existent file raises ResourceError.PathNotFound" >>* {
+      val path = ResourcePath.root() / ResourceName("does-not-exist")
+      val read = datasource.flatMap(_.loadFull(iRead(path)).value)
+
+      MonadResourceErr[IO].attempt(read.use(_ => IO.unit)).map(_.toEither must beLeft.like {
+        case ResourceError.PathNotFound(_) => ok
+      })
+    }
+
+  }
+
+  "pathIsResource" >> {
+    "the root of a bucket is not a resource" >>* {
+      val root = ResourcePath.root()
+      datasource.flatMap(_.pathIsResource(root)).use(b => IO.pure(b must beFalse))
+    }
+  }
+
+  "prefixedChildPaths" >> {
+    "list children at the root of the bucket" >>* {
+      assertPrefixedChildPaths(
+        ResourcePath.root(),
+        List(
+          ResourceName("a") -> ResourcePathType.leafResource,
+          ResourceName("b") -> ResourcePathType.leafResource,
+          ResourceName("c") -> ResourcePathType.leafResource))
+    }
+  }
+
+  def assertPrefixedChildPaths(path: ResourcePath, expected: List[(ResourceName, ResourcePathType)]): IO[MatchResult[Any]] =
+    OptionT(datasource.flatMap(_.prefixedChildPaths(path)))
+      .getOrElseF(Resource.liftF(IO.raiseError(new Exception(s"Failed to list resources under $path"))))
+      .use(gatherMultiple)
+      .map(result => {
+        // assert the same elements, with no duplicates
+        result.length must_== expected.length
+        result.toSet must_== expected.toSet
+      })
+
+  def iRead[A](path: A): InterpretedRead[A] = InterpretedRead(path, ScalarStages.Id)
+
+  def assertResultBytes(ds: Resource[IO, DS[IO]], path: ResourcePath, expected: Array[Byte]): IO[MatchResult[Any]] =
+    ds.flatMap(_.loadFull(iRead(path)).value) use {
+      case Some(QueryResult.Typed(_, data, ScalarStages.Id)) =>
+        data.compile.to(Array).map(_ must_=== expected)
+
+      case _ =>
+        IO(ko("Unexpected QueryResult"))
+    }
+}
+
+object KafkaDatasourceSpec {
+  implicit val ioMonadResourceErr: MonadError_[IO, ResourceError] =
+    MonadError_.facet[IO](ResourceError.throwableP)
+
+  def mkDatasource(config: Config): Resource[IO, DS[IO]] = {
+
+    def mockConsumerBuilder[F[_]: Applicative]: ConsumerBuilder[F] = new ConsumerBuilder[F] {
+      override def mkConsumer: Resource[F, Consumer[F]] = {
+        Resource.pure[F, Consumer[F]] {
+          (topic: String) => {
+            Resource.pure[F, Stream[F, Byte]] {
+              Stream.unfoldChunk(config.topics.toList.dropWhile(_ != topic)) {
+                case h :: t => Some((Chunk.bytes(h.getBytes), t))
+                case Nil    => None
+              }
+            }
+          }
+        }
+      }
     }
 
     Resource.pure[IO, DS[IO]](KafkaDatasource(config, mockConsumerBuilder))
@@ -50,15 +157,4 @@ class KafkaDatasourceSpec extends DatasourceSpec[IO, Stream[IO, ?], ResourcePath
     decoder = Decoder.rawValue,
     format = DataFormat.ldjson)
 
-  override def datasource: Resource[IO, Datasource[Resource[IO, *], Stream[IO, *], _, _, ResourcePathType.Physical]] =
-    mkDatasource(config)
-
-  override val nonExistentPath: ResourcePath = ResourcePath.root() / ResourceName("other")
-
-  override def gatherMultiple[A](g: Stream[IO, A]): IO[List[A]] = g.compile.toList
-}
-
-object KafkaDatasourceSpec {
-  implicit val ioMonadResourceErr: MonadError_[IO, ResourceError] =
-    MonadError_.facet[IO](ResourceError.throwableP)
 }

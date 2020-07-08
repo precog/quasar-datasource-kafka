@@ -38,7 +38,7 @@ final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
     consumerBuilder: ConsumerBuilder[F])
     extends LightweightDatasource[Resource[F, ?], Stream[F, ?], QueryResult[F]]  {
 
-  override def kind: DatasourceType = DatasourceType("kafka", 1L)
+  override def kind: DatasourceType = KafkaDatasourceModule.kind
 
   override def loaders: NonEmptyList[Loader[Resource[F, *], InterpretedRead[ResourcePath], QueryResult[F]]] =
     NonEmptyList.of(Loader.Batch(BatchLoader.Full { (iRead: InterpretedRead[ResourcePath]) =>
@@ -49,8 +49,11 @@ final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
             bytes <- consumer.fetch(topic)
           } yield QueryResult.typed(config.format, bytes, iRead.stages)
 
-        case _                                                          =>
+        case None =>
           Resource.liftF(MonadError_[F, ResourceError].raiseError[QueryResult[F]](ResourceError.NotAResource(iRead.path)))
+
+        case _ =>
+          Resource.liftF(MonadError_[F, ResourceError].raiseError[QueryResult[F]](ResourceError.PathNotFound(iRead.path)))
       }
     }))
 

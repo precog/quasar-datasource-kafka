@@ -19,8 +19,8 @@ package quasar.datasource.kafka
 import slamdata.Predef._
 
 import cats.effect.{ConcurrentEffect, ContextShift, Resource, Timer}
-import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, consumerResource}
-import fs2.{Chunk, Stream}
+import fs2.Stream
+import fs2.kafka.{ConsumerSettings, consumerResource}
 
 class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
     settings: ConsumerSettings[F, K, V],
@@ -36,15 +36,10 @@ class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
 }
 
 object KafkaConsumer {
+
   def apply[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
       settings: ConsumerSettings[F, K, V],
       decoder: RecordDecoder[F, K, V])
       : Consumer[F] =
     new KafkaConsumer(settings, decoder)
-
-  def RawKey[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
-    (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) => Stream.chunk(Chunk.bytes(record.record.key))
-
-  def RawValue[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
-    (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) => Stream.chunk(Chunk.bytes(record.record.value))
 }

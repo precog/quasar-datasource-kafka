@@ -24,7 +24,6 @@ import cats.effect.{ConcurrentEffect, ContextShift, Resource, Timer}
 import cats.implicits._
 import cats.kernel.Hash
 import eu.timepit.refined.auto._
-import fs2.kafka._
 import quasar.RateLimiting
 import quasar.api.datasource.DatasourceError.InitializationError
 import quasar.api.datasource.{DatasourceError, DatasourceType}
@@ -79,18 +78,10 @@ object KafkaDatasourceModule extends LightweightDatasourceModule {
     (implicit ec: ExecutionContext): Resource[F, Either[DatasourceError.InitializationError[Json], DS[F]]] = {
     config.as[Config].result match {
       case Right(kafkaConfig) =>
-        val consumerSettings = ConsumerSettings[F, Array[Byte], Array[Byte]]
-          .withAutoOffsetReset(AutoOffsetReset.Earliest)
-          .withBootstrapServers(kafkaConfig.bootstrapServers.toList.mkString(","))
-//          .withBlocker(Blocker.liftExecutionContext(ec))
 
-        val decoder = kafkaConfig.decoder match {
-          case Decoder.RawKey => KafkaConsumer.RawKey[F]
-          case Decoder.RawValue => KafkaConsumer.RawValue[F]
-        }
-
+        val kafkaConsumerBuilder = KafkaConsumerBuilder(kafkaConfig, kafkaConfig.decoder)
         Resource.pure[F, Either[DatasourceError.InitializationError[Json], DS[F]]](
-          KafkaDatasource(kafkaConfig, KafkaConsumerBuilder(kafkaConfig, consumerSettings, decoder)).asRight)
+          KafkaDatasource(kafkaConfig, kafkaConsumerBuilder).asRight)
 
       case Left((msg, _))  =>
         DatasourceError
