@@ -29,7 +29,6 @@ lazy val root = project
 
 lazy val core = project
   .in(file("core"))
-  .settings(addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"))
   .settings(
     name := "quasar-datasource-kafka",
 
