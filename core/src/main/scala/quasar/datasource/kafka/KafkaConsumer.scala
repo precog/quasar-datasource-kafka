@@ -37,11 +37,11 @@ class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K,
       .using(settings)
       .evalTap(_.subscribeTo(topic))
       .evalTap(_ => ConcurrentEffect[F].delay(log.debug(s"Subscribed to $topic")))
+      .evalTap(_.seekToBeginning)
       .evalMap(getOffsets(topic))
       .evalTap(pair => ConcurrentEffect[F].delay(log.debug(s"${pair._2.size} offsets: ${pair._2.toList.mkString(" ")}") ))
       .map {
         case (consumer, offsets) =>
-          // consumer.seekToBeginning // evaluated lazily, so no good?
           consumer.partitionedStream
             .map(_.takeThrough(isOffsetLimit(_, offsets)))
             .parJoinUnbounded
