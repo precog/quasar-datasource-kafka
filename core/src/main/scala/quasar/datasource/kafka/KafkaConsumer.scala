@@ -42,7 +42,7 @@ class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
   override def fetch(topic: String): Resource[F, Stream[F, Byte]] = {
     consumerResource[F].using(settings) evalMap { consumer =>
       for {
-        info <- consumer.partitionsFor("topic")
+        info <- consumer.partitionsFor(topic)
         topicPartitionSet = SortedSet(info.map(partitionInfoToTopicPartition): _*)
         _ <- F.delay(log.debug(s"TopicPartition Set: $topicPartitionSet"))
         _ <- NonEmptySet.fromSet(topicPartitionSet).fold(F.unit)(consumer.assign)
