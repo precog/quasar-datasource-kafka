@@ -18,10 +18,10 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
-import argonaut._
-import Argonaut._
 import org.specs2.mutable.Specification
 
+import argonaut.Argonaut._
+import argonaut._
 import cats.data.NonEmptyList
 import quasar.connector.DataFormat
 

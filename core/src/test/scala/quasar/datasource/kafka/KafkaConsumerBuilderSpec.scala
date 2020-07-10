@@ -20,28 +20,29 @@ import slamdata.Predef._
 
 import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.common.TopicPartition
-import org.specs2.mutable.Specification
 
 import cats.effect.IO
 import fs2.kafka.{CommittableConsumerRecord, CommittableOffset, ConsumerRecord}
+import quasar.EffectfulQSpec
+import quasar.datasource.kafka.TestImplicits._
 
-class KafkaConsumerBuilderSpec extends Specification {
+class KafkaConsumerBuilderSpec extends EffectfulQSpec[IO] {
 
   "KafkaDecoders" >> {
-    "RawKey drops the value, preserves the key" >> {
+    "RawKey drops the value, preserves the key" >>* {
       val decoder = KafkaConsumerBuilder.RawKey[IO]
       val record = CommittableConsumerRecord[IO, Array[Byte], Array[Byte]](
         ConsumerRecord("precog", 0, 0, "key".getBytes, "value".getBytes),
         CommittableOffset(new TopicPartition("precog", 0), new OffsetAndMetadata(0), None, _ => IO.unit))
-      decoder(record).compile.toList.unsafeRunSync() mustEqual "key".getBytes.toList
+      decoder(record).compile.toList.map(_ mustEqual "key".getBytes.toList)
     }
 
-    "RawValue drops the key, preserves the value" >> {
+    "RawValue drops the key, preserves the value" >>* {
       val decoder = KafkaConsumerBuilder.RawValue[IO]
       val record = CommittableConsumerRecord[IO, Array[Byte], Array[Byte]](
         ConsumerRecord("precog", 0, 0, "key".getBytes, "value".getBytes),
         CommittableOffset(new TopicPartition("precog", 0), new OffsetAndMetadata(0), None, _ => IO.unit))
-      decoder(record).compile.toList.unsafeRunSync() mustEqual "value".getBytes.toList
+      decoder(record).compile.toList.map(_ mustEqual "value".getBytes.toList)
     }
   }
 

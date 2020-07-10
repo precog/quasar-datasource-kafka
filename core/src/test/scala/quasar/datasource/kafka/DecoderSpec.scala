@@ -16,9 +16,9 @@
 
 package quasar.datasource.kafka
 
-import argonaut._, Argonaut._
-
 import org.specs2.mutable.Specification
+
+import argonaut.Argonaut._
 
 class DecoderSpec extends Specification {
 

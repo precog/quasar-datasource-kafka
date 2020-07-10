@@ -25,18 +25,21 @@ import cats.effect._
 import cats.implicits._
 import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, consumerResource}
 import fs2.{Stream, kafka}
+import org.slf4s.Logging
+
 
 class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K, V](
     settings: ConsumerSettings[F, K, V],
     decoder: RecordDecoder[F, K, V])
-    extends Consumer[F] {
+    extends Consumer[F] with Logging {
 
   override def fetch(topic: String): Resource[F, Stream[F, Byte]] = {
     consumerResource[F]
       .using(settings)
       .evalTap(_.subscribeTo(topic))
-
+      .evalTap(_ => ConcurrentEffect[F].delay(log.debug(s"Subscribed to $topic")))
       .evalMap(getOffsets)
+      .evalTap(pair => ConcurrentEffect[F].delay(log.debug(s"${pair._2.size} offsets: ${pair._2.toList.mkString(" ")}") ))
       .map {
         case (consumer, offsets) =>
           consumer.partitionedStream
@@ -55,8 +58,8 @@ class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K,
     val topic = record.topic
     val partition = record.partition
     val topicPartition = new TopicPartition(topic, partition)
-    val end = offsets(topicPartition)
-    record.offset >= end
+    val end = offsets.get(topicPartition)
+    end.forall(record.offset >= _)
   }
 }
 

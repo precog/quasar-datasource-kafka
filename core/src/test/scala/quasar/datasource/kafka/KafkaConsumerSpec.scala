@@ -24,12 +24,9 @@ import org.specs2.mutable.Specification
 
 import cats.effect._
 import fs2.kafka.{CommittableConsumerRecord, CommittableOffset, ConsumerRecord, ConsumerSettings}
-
-import scala.concurrent.ExecutionContext.global
+import quasar.datasource.kafka.TestImplicits._
 
 class KafkaConsumerSpec extends Specification {
-  implicit val timer: Timer[IO] = IO.timer(global)
-  implicit val cs: ContextShift[IO] = IO.contextShift(global)
 
   "isOffsetLimit" >> {
     val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]

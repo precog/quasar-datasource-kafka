@@ -31,7 +31,7 @@ import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
 import quasar.connector._
 import quasar.connector.datasource.DatasourceSpec
 import quasar.connector.datasource.LightweightDatasourceModule.DS
-import quasar.contrib.scalaz.MonadError_
+import quasar.datasource.kafka.TestImplicits._
 import quasar.qscript.InterpretedRead
 import shims.applicativeToScalaz
 
@@ -127,9 +127,6 @@ class KafkaDatasourceSpec extends DatasourceSpec[IO, Stream[IO, ?], ResourcePath
 }
 
 object KafkaDatasourceSpec {
-  implicit val ioMonadResourceErr: MonadError_[IO, ResourceError] =
-    MonadError_.facet[IO](ResourceError.throwableP)
-
   def mkDatasource(config: Config): Resource[IO, DS[IO]] = {
 
     def mockConsumerBuilder[F[_]: Applicative]: ConsumerBuilder[F] = new ConsumerBuilder[F] {

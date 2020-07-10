@@ -16,19 +16,18 @@
 
 package quasar.datasource.kafka
 
-import org.specs2.mutable.Specification
 import slamdata.Predef._
 
+import org.specs2.mutable.Specification
+
+import argonaut.Argonaut._
 import argonaut._
-import Argonaut._
-import quasar.api.datasource.{DatasourceError, DatasourceType}
 import eu.timepit.refined.auto._
+import quasar.api.datasource.{DatasourceError, DatasourceType}
 import quasar.connector.datasource.Reconfiguration
 
 
 class KafkaDatasourceModuleSpec extends Specification {
-
-  //TODO: test that decoder is used? integration testing?
 
   "reconfiguration" >> {
     val ldjsonJ = Json(
