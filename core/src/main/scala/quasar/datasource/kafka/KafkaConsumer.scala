@@ -41,6 +41,7 @@ class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K,
       .evalTap(pair => ConcurrentEffect[F].delay(log.debug(s"${pair._2.size} offsets: ${pair._2.toList.mkString(" ")}") ))
       .map {
         case (consumer, offsets) =>
+          // consumer.seekToBeginning // evaluated lazily, so no good?
           consumer.partitionedStream
             .map(_.takeThrough(isOffsetLimit(_, offsets)))
             .parJoinUnbounded
@@ -54,7 +55,6 @@ class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K,
     val assignment = consumer
       .partitionsFor(topic)
       .map(_.map(partitionInfoToTopicPartition).toSet)
-//    val assignment: F[Set[TopicPartition]] = consumer.assignment.map(_.toSet)
     assignment.flatMap(consumer.endOffsets).map(consumer -> _)
   }
 
@@ -64,7 +64,7 @@ class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K,
     val partition = record.partition
     val topicPartition = new TopicPartition(topic, partition)
     val end = offsets.get(topicPartition)
-    end.forall(record.offset >= _)
+    end.exists(record.offset < _)
   }
 
   def partitionInfoToTopicPartition(info: PartitionInfo): TopicPartition =

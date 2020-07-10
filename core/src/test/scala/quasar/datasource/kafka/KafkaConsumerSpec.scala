@@ -36,25 +36,27 @@ class KafkaConsumerSpec extends Specification {
     val tp3 = new TopicPartition("topic", 0)
     val endOffsets = Map(tp1 -> 100L, tp2 -> 20L, tp3 -> 30L)
 
-    "is false if record offset is less than end offset" >> {
+    // TODO: test that isOffsetLimit can be used with `takeThrough`, instead of testing the values it returns
+
+    "is true if record offset is less than end offset" >> {
       val record = CommittableConsumerRecord[IO, Array[Byte], Array[Byte]](
         ConsumerRecord("precog", 0, 5, "key".getBytes, "value".getBytes),
         CommittableOffset(new TopicPartition("precog", 0), new OffsetAndMetadata(5), None, _ => IO.unit))
-      kafkaConsumer.isOffsetLimit(record, endOffsets) must beFalse
+      kafkaConsumer.isOffsetLimit(record, endOffsets) must beTrue
     }
 
-    "is true if record offset is equal to end offset" >> {
+    "is false if record offset is equal to end offset" >> {
       val record = CommittableConsumerRecord[IO, Array[Byte], Array[Byte]](
         ConsumerRecord("precog", 1, 20, "key".getBytes, "value".getBytes),
         CommittableOffset(new TopicPartition("precog", 1), new OffsetAndMetadata(20), None, _ => IO.unit))
-      kafkaConsumer.isOffsetLimit(record, endOffsets)
+      kafkaConsumer.isOffsetLimit(record, endOffsets) must beFalse
     }
 
     "is true if record offset is more than end offset" >> {
       val record = CommittableConsumerRecord[IO, Array[Byte], Array[Byte]](
         ConsumerRecord("topic", 0, 50, "key".getBytes, "value".getBytes),
         CommittableOffset(new TopicPartition("topic", 50), new OffsetAndMetadata(5), None, _ => IO.unit))
-      kafkaConsumer.isOffsetLimit(record, endOffsets)
+      kafkaConsumer.isOffsetLimit(record, endOffsets) must beFalse
     }
   }
 
