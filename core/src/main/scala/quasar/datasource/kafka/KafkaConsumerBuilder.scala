@@ -40,8 +40,8 @@ class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : Mona
       val consumerSettings = ConsumerSettings[F, Array[Byte], Array[Byte]]
         .withAutoOffsetReset(AutoOffsetReset.Earliest)
         .withBootstrapServers(config.bootstrapServers.toList.mkString(","))
-        .withGroupId(config.groupId)
-      //          .withBlocker(Blocker.liftExecutionContext(ec))
+      // .withGroupId(config.groupId)
+      // .withBlocker(Blocker.liftExecutionContext(ec))
 
       KafkaConsumer(consumerSettings, recordDecoder)
     }

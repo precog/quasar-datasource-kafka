@@ -19,43 +19,41 @@ package quasar.datasource.kafka
 import slamdata.Predef._
 
 import org.apache.kafka.common.{PartitionInfo, TopicPartition}
-
-import cats.Applicative
-import cats.effect._
-import cats.implicits._
-import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, consumerResource}
-import fs2.{Stream, kafka}
 import org.slf4s.Logging
 
-class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K, V](
+import cats.Order
+import cats.data.NonEmptySet
+import cats.effect._
+import cats.implicits._
+import fs2.Stream
+import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, consumerResource}
+
+import scala.collection.immutable.SortedSet
+
+class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
     settings: ConsumerSettings[F, K, V],
     decoder: RecordDecoder[F, K, V])
     extends Consumer[F] with Logging {
 
-  override def fetch(topic: String): Resource[F, Stream[F, Byte]] = {
-    consumerResource[F]
-      .using(settings)
-      .evalTap(_.subscribeTo(topic))
-      .evalTap(_ => ConcurrentEffect[F].delay(log.debug(s"Subscribed to $topic")))
-      .evalTap(_.seekToBeginning)
-      .evalMap(getOffsets(topic))
-      .evalTap(pair => ConcurrentEffect[F].delay(log.debug(s"${pair._2.size} offsets: ${pair._2.toList.mkString(" ")}") ))
-      .map {
-        case (consumer, offsets) =>
-          consumer.partitionedStream
-            .map(_.takeThrough(isOffsetLimit(_, offsets)))
-            .parJoinUnbounded
-            .flatMap(decoder)
-      }
-  }
+  import KafkaConsumer.topicPartitionOrder
 
-  def getOffsets(topic: String)(
-      consumer: kafka.KafkaConsumer[F, K, V])
-      : F[(fs2.kafka.KafkaConsumer[F, K, V], Map[TopicPartition, Long])] = {
-    val assignment = consumer
-      .partitionsFor(topic)
-      .map(_.map(partitionInfoToTopicPartition).toSet)
-    assignment.flatMap(consumer.endOffsets).map(consumer -> _)
+  val F: ConcurrentEffect[F] = ConcurrentEffect[F]
+
+  override def fetch(topic: String): Resource[F, Stream[F, Byte]] = {
+    consumerResource[F].using(settings) evalMap { consumer =>
+      for {
+        info <- consumer.partitionsFor("topic")
+        topicPartitionSet = SortedSet(info.map(partitionInfoToTopicPartition): _*)
+        _ <- F.delay(log.debug(s"TopicPartition Set: $topicPartitionSet"))
+        _ <- NonEmptySet.fromSet(topicPartitionSet).fold(F.unit)(consumer.assign)
+        _ <- F.delay(log.info(s"Assigned partitions from $topic"))
+        endOffsets <- consumer.endOffsets(topicPartitionSet)
+        _ <- F.delay(log.debug(s"${endOffsets.size} offsets: $endOffsets"))
+      } yield consumer.partitionedStream
+        .map(_.takeThrough(isOffsetLimit(_, endOffsets)))
+        .parJoin(endOffsets.size)
+        .flatMap(decoder)
+    }
   }
 
   def isOffsetLimit(committableRecord: CommittableConsumerRecord[F, K, V], offsets: Map[TopicPartition, Long]): Boolean = {
@@ -63,8 +61,8 @@ class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K,
     val topic = record.topic
     val partition = record.partition
     val topicPartition = new TopicPartition(topic, partition)
-    val end = offsets.get(topicPartition)
-    end.exists(record.offset < _)
+    val end = offsets(topicPartition)
+    record.offset < end
   }
 
   def partitionInfoToTopicPartition(info: PartitionInfo): TopicPartition =
@@ -72,6 +70,9 @@ class KafkaConsumer[F[_]: Applicative: ConcurrentEffect: ContextShift: Timer, K,
 }
 
 object KafkaConsumer {
+  implicit val topicPartitionOrder: Order[TopicPartition] =
+    Order.by(tp => (tp.topic, tp.partition))
+
 
   def apply[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
       settings: ConsumerSettings[F, K, V],
