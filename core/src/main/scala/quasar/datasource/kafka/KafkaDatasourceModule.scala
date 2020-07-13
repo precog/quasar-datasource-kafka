@@ -47,21 +47,21 @@ object KafkaDatasourceModule extends LightweightDatasourceModule {
     original: Json,
     patch: Json): Either[DatasourceError.ConfigurationError[Json], (Reconfiguration, Json)] = {
     val back = for {
-      original <- original.as[Config].result.leftMap(_ =>
+      originalConfig <- original.as[Config].result.leftMap(_ =>
         DatasourceError
           .MalformedConfiguration[Json](
             kind,
             sanitizeConfig(original),
             "Source configuration in reconfiguration is malformed."))
 
-      patch <- patch.as[Config].result.leftMap(_ =>
+      patchConfig <- patch.as[Config].result.leftMap(_ =>
         DatasourceError
           .MalformedConfiguration[Json](
             kind,
             sanitizeConfig(patch),
             "Patch configuration in reconfiguration is malformed."))
 
-      reconfigured <- original.reconfigure(patch).leftMap(c =>
+      reconfigured <- originalConfig.reconfigure(patchConfig).leftMap(c =>
         DatasourceError.InvalidConfiguration[Json](
           kind,
           c.asJson,
