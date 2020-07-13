@@ -37,12 +37,24 @@ class KafkaConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Te
     val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
     val kafkaConsumer = new KafkaConsumer[IO, Array[Byte], Array[Byte]](settings, KafkaConsumerBuilder.RawKey)
 
-    "should make the stream terminate once data from the sole substream is read" >> {
+    "terminates stream once data from the sole substream is read" >> {
       val tp = new TopicPartition("topic", 0)
       val offset = 5L
       val endOffsets = Map(tp -> (offset + 1L))
       val mkRecord = mkCommittableConsumerRecord(tp, (_: Long), "key" -> "value")
-      val stream = Stream.eval(IO.pure(Stream.iterate[IO, Long](offset)(_ + 1).map(mkRecord)))
+      val assignment = IO.pure(Stream.iterate[IO, Long](offset)(_ + 1).map(mkRecord))
+      val stream = Stream.eval(assignment)
+
+      kafkaConsumer.limitStream(stream, endOffsets).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
+    }
+
+    "terminates stream even if main stream keeps producing auto assignments" >> {
+      val tp = new TopicPartition("topic", 0)
+      val offset = 5L
+      val endOffsets = Map(tp -> (offset + 1L))
+      val mkRecord = mkCommittableConsumerRecord(tp, (_: Long), "key" -> "value")
+      val assignment = IO.pure(Stream.iterate[IO, Long](offset)(_ + 1).map(mkRecord))
+      val stream = Stream.eval(assignment).repeat // repeat to emulate hypothetical automatic assignments
 
       kafkaConsumer.limitStream(stream, endOffsets).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
     }

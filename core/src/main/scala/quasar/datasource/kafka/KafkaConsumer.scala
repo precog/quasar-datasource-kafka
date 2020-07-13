@@ -62,6 +62,7 @@ class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
   def limitStream(stream: Stream[F, Stream[F, CommittableConsumerRecord[F, K, V]]], endOffsets: Map[TopicPartition, Long])
       : Stream[F, CommittableConsumerRecord[F, K, V]] = {
     stream
+      .take(endOffsets.size.toLong) // assumes no automatic assignment; needs a filter otherwise
       .map(_.takeThrough(isOffsetLimit(_, endOffsets)))
       .parJoin(endOffsets.size)
   }
