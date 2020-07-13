@@ -42,18 +42,28 @@ class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
   override def fetch(topic: String): Resource[F, Stream[F, Byte]] = {
     consumerResource[F].using(settings) evalMap { consumer =>
       for {
-        info <- consumer.partitionsFor(topic)
-        topicPartitionSet = SortedSet(info.map(partitionInfoToTopicPartition): _*)
-        _ <- F.delay(log.debug(s"TopicPartition Set: $topicPartitionSet"))
-        _ <- NonEmptySet.fromSet(topicPartitionSet).fold(F.unit)(consumer.assign)
-        _ <- F.delay(log.info(s"Assigned partitions from $topic"))
-        endOffsets <- consumer.endOffsets(topicPartitionSet)
-        _ <- F.delay(log.debug(s"${endOffsets.size} offsets: $endOffsets"))
-      } yield consumer.partitionedStream
-        .map(_.takeThrough(isOffsetLimit(_, endOffsets)))
-        .parJoin(endOffsets.size)
-        .flatMap(decoder)
+        endOffsets <- assignTopic(consumer, topic)
+      } yield limitStream(consumer.partitionedStream, endOffsets).flatMap(decoder)
     }
+  }
+
+  def assignTopic(consumer: fs2.kafka.KafkaConsumer[F, K, V], topic: String): F[Map[TopicPartition, Long]] = {
+    for {
+      info <- consumer.partitionsFor(topic)
+      topicPartitionSet = SortedSet(info.map(partitionInfoToTopicPartition): _*)
+      _ <- F.delay(log.debug(s"TopicPartition Set: $topicPartitionSet"))
+      _ <- NonEmptySet.fromSet(topicPartitionSet).fold(F.unit)(consumer.assign)
+      _ <- F.delay(log.info(s"Assigned partitions from $topic"))
+      endOffsets <- consumer.endOffsets(topicPartitionSet)
+      _ <- F.delay(log.debug(s"${endOffsets.size} offsets: $endOffsets"))
+    } yield endOffsets
+  }
+
+  def limitStream(stream: Stream[F, Stream[F, CommittableConsumerRecord[F, K, V]]], endOffsets: Map[TopicPartition, Long])
+      : Stream[F, CommittableConsumerRecord[F, K, V]] = {
+    stream
+      .map(_.takeThrough(isOffsetLimit(_, endOffsets)))
+      .parJoin(endOffsets.size)
   }
 
   def isOffsetLimit(committableRecord: CommittableConsumerRecord[F, K, V], offsets: Map[TopicPartition, Long]): Boolean = {
@@ -62,7 +72,7 @@ class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
     val partition = record.partition
     val topicPartition = new TopicPartition(topic, partition)
     val end = offsets(topicPartition)
-    record.offset < end
+    record.offset < (end - 1)
   }
 
   def partitionInfoToTopicPartition(info: PartitionInfo): TopicPartition =
