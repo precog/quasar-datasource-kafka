@@ -40,11 +40,11 @@ class KafkaConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Te
     "should make the stream terminate once data from the sole substream is read" >> {
       val tp = new TopicPartition("topic", 0)
       val offset = 5L
-      val endOffset = offset + 1L
-      val record = mkCommittableConsumerRecord(tp, offset, "key" -> "value")
-      val stream = Stream.eval(IO.pure(Stream.eval(IO.pure(record))))
+      val endOffsets = Map(tp -> (offset + 1L))
+      val mkRecord = mkCommittableConsumerRecord(tp, (_: Long), "key" -> "value")
+      val stream = Stream.eval(IO.pure(Stream.iterate[IO, Long](offset)(_ + 1).map(mkRecord)))
 
-      kafkaConsumer.limitStream(stream, Map(tp -> endOffset)).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
+      kafkaConsumer.limitStream(stream, endOffsets).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
     }
   }
 
