@@ -30,6 +30,7 @@ case class Config(
   topics: NonEmptyList[String],
   decoder: Decoder,
   format: DataFormat
+  // TODO: Add compression scheme
 ) extends Product with Serializable {
   def isTopic(topic: String): Boolean = topics.exists(_ == topic)
 

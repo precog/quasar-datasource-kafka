@@ -73,6 +73,7 @@ class KafkaConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
     val partition = record.partition
     val topicPartition = new TopicPartition(topic, partition)
     val end = offsets(topicPartition)
+    log.trace(s"Read offset ${record.offset} / ${end - 1} from $topicPartition")
     record.offset < (end - 1)
   }
 
