@@ -62,6 +62,31 @@ class ConfigSpec extends Specification {
           format = DataFormat.ldjson))
     }
 
+    "parses compressed formats" >> {
+      val s =
+        """
+          |{
+          | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
+          | "groupId": "precog",
+          | "topics": [ "a", "b", "c" ],
+          | "decoder": "RawKey",
+          | "format": {
+          |   "type": "json",
+          |   "variant": "line-delimited",
+          |   "precise": false
+          | },
+          | "compressionScheme": "gzip"
+          |}""".stripMargin
+
+      s.decode[Config] must beRight(
+        Config(
+          bootstrapServers = NonEmptyList.of("a.b.c.d:xyzzy","d.e.f.g:yzzyx"),
+          groupId = "precog",
+          topics = NonEmptyList.of("a", "b", "c"),
+          decoder = Decoder.rawKey,
+          format = DataFormat.gzipped(DataFormat.ldjson)))
+    }
+
     "fails on missing bootstrapServers" >> {
       val s =
         """

@@ -32,7 +32,8 @@ The configuration of the Kafka Datasource has the following JSON format:
     "openQuote": String,
     "closeQuote": String,
     "escape": String
-  },
+  }
+  [, "compressionScheme": "gzip"]
 }
 
 ```
@@ -56,6 +57,3 @@ Example
  }
 }
 ```
-
-## Testing
-
