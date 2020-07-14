@@ -30,7 +30,6 @@ case class Config(
   topics: NonEmptyList[String],
   decoder: Decoder,
   format: DataFormat
-  // TODO: Add compression scheme
 ) extends Product with Serializable {
   def isTopic(topic: String): Boolean = topics.exists(_ == topic)
 
@@ -41,8 +40,11 @@ case class Config(
 
 object Config {
 
+  // We implement the encoder instead of using argonaut's because we implement the decoder
   implicit def nelEJ[A: EncodeJson]: EncodeJson[NonEmptyList[A]] = _.toList.asJson
 
+  // We implement our on decoder because Argonaut's default decoder
+  // error message doesn't say the problem is that the list is empty
   implicit def nelDJ[A: DecodeJson]: DecodeJson[NonEmptyList[A]] = c => c.as[List[A]].flatMap {
     case Nil    =>
       c.history.head match {
