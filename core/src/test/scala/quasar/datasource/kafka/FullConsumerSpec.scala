@@ -87,7 +87,7 @@ class FullConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Ter
     val endOffsets = Map(tp1 -> 100L, tp2 -> 20L, tp3 -> 30L)
     val entry: (String, String) = "key" -> "value"
 
-    // TODO: test that isOffsetLimit can be used with `takeThrough`, instead of testing the values it returns
+    // TODO: test that isNotOffsetLimit can be used with `takeThrough`, instead of testing the values it returns
 
     "is true if record offset is less than end offset - 1" >> {
       val record = mkCommittableConsumerRecord(tp1, 5L, entry)

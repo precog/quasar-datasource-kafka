@@ -41,6 +41,7 @@ lazy val core = project
     quasarPluginDependencies ++= Seq(
       "com.github.fd4s"         %% "fs2-kafka"            % "1.0.0",
       "org.slf4s"               %% "slf4s-api"            % "1.7.25",
+      "org.slf4j"               %  "slf4j-simple"         % "1.7.25" % Test,
       "org.specs2"              %% "specs2-core"          % specs2Version % Test,
       "org.specs2"              %% "specs2-matcher-extra" % specs2Version % Test,
       "org.specs2"              %% "specs2-scalacheck"    % specs2Version % Test,
