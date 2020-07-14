@@ -130,7 +130,7 @@ object KafkaDatasourceSpec {
   def mkDatasource(config: Config): Resource[IO, DS[IO]] = {
 
     def mockConsumerBuilder[F[_]: Applicative]: ConsumerBuilder[F] = new ConsumerBuilder[F] {
-      override def mkConsumer: Resource[F, Consumer[F]] = {
+      override def mkFullConsumer: Resource[F, Consumer[F]] = {
         Resource.pure[F, Consumer[F]] {
           (topic: String) => {
             Resource.pure[F, Stream[F, Byte]] {

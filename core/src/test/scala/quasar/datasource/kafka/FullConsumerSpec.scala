@@ -31,11 +31,29 @@ import quasar.datasource.kafka.TestImplicits._
 
 import scala.concurrent.duration._
 
-class KafkaConsumerSpec(implicit ec: ExecutionEnv) extends Specification with TerminationMatchers {
+class FullConsumerSpec(implicit ec: ExecutionEnv) extends Specification with TerminationMatchers {
+
+  "assignTopic" >> {
+    "assigns all non empty partitions" >> {
+      todo
+    }
+
+    "does not assign empty partitions" >> {
+      todo
+    }
+
+    "returns end offsets of all non empty partitions" >> {
+      todo
+    }
+
+    "does not return end offset of empty partitions" >> {
+      todo
+    }
+  }
 
   "limitStream" >> {
     val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
-    val kafkaConsumer = new KafkaConsumer[IO, Array[Byte], Array[Byte]](settings, KafkaConsumerBuilder.RawKey)
+    val kafkaConsumer = new FullConsumer[IO, Array[Byte], Array[Byte]](settings, KafkaConsumerBuilder.RawKey)
 
     "terminates stream once data from the sole substream is read" >> {
       val tp = new TopicPartition("topic", 0)
@@ -45,7 +63,7 @@ class KafkaConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Te
       val assignment = IO.pure(Stream.iterate[IO, Long](offset)(_ + 1).map(mkRecord))
       val stream = Stream.eval(assignment)
 
-      kafkaConsumer.limitStream(stream, endOffsets).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
+      kafkaConsumer.takeUntilEndOffsets(stream, endOffsets).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
     }
 
     "terminates stream even if main stream keeps producing auto assignments" >> {
@@ -56,13 +74,13 @@ class KafkaConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Te
       val assignment = IO.pure(Stream.iterate[IO, Long](offset)(_ + 1).map(mkRecord))
       val stream = Stream.eval(assignment).repeat // repeat to emulate hypothetical automatic assignments
 
-      kafkaConsumer.limitStream(stream, endOffsets).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
+      kafkaConsumer.takeUntilEndOffsets(stream, endOffsets).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
     }
   }
 
   "isOffsetLimit" >> {
     val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
-    val kafkaConsumer = new KafkaConsumer[IO, Array[Byte], Array[Byte]](settings, KafkaConsumerBuilder.RawKey)
+    val kafkaConsumer = new FullConsumer[IO, Array[Byte], Array[Byte]](settings, KafkaConsumerBuilder.RawKey)
     val tp1 = new TopicPartition("precog", 0)
     val tp2 = new TopicPartition("precog", 1)
     val tp3 = new TopicPartition("topic", 0)
@@ -73,17 +91,17 @@ class KafkaConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Te
 
     "is true if record offset is less than end offset - 1" >> {
       val record = mkCommittableConsumerRecord(tp1, 5L, entry)
-      kafkaConsumer.isOffsetLimit(record, endOffsets) must beTrue
+      kafkaConsumer.isNotOffsetLimit(record, endOffsets) must beTrue
     }
 
     "is false if record offset is equal to end offset - 1" >> {
       val record = mkCommittableConsumerRecord(tp2, 19L, entry)
-      kafkaConsumer.isOffsetLimit(record, endOffsets) must beFalse
+      kafkaConsumer.isNotOffsetLimit(record, endOffsets) must beFalse
     }
 
     "is true if record offset is more than end offset - 1" >> {
       val record = mkCommittableConsumerRecord(tp3, 50L, entry)
-      kafkaConsumer.isOffsetLimit(record, endOffsets) must beFalse
+      kafkaConsumer.isNotOffsetLimit(record, endOffsets) must beFalse
     }
   }
 

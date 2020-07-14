@@ -28,10 +28,9 @@ class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : Mona
     decoder: Decoder)
     extends ConsumerBuilder[F] {
 
-  def mkConsumer: Resource[F, Consumer[F]] = {
+  def mkFullConsumer: Resource[F, Consumer[F]] = {
     val F: ConcurrentEffect[F] = ConcurrentEffect[F]
     Resource.liftF(F.delay(f"${config.groupId}%s_${randomUuid().toString}%s")) map { groupId =>
-      // TODO: either get this to fail compilation if non-exhaustive, or move it somewhere it can return a configuration error
       val recordDecoder = decoder match {
         case Decoder.RawKey => KafkaConsumerBuilder.RawKey[F]
         case Decoder.RawValue => KafkaConsumerBuilder.RawValue[F]
@@ -40,10 +39,10 @@ class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : Mona
       val consumerSettings = ConsumerSettings[F, Array[Byte], Array[Byte]]
         .withAutoOffsetReset(AutoOffsetReset.Earliest)
         .withBootstrapServers(config.bootstrapServers.toList.mkString(","))
-      // .withGroupId(config.groupId)
-      // .withBlocker(Blocker.liftExecutionContext(ec))
+      // .withGroupId(config.groupId)  // only for streaming consumers
+      // .withBlocker(Blocker.liftExecutionContext(???))  // change if the default, single-threaded, blocker causes issues
 
-      KafkaConsumer(consumerSettings, recordDecoder)
+      FullConsumer(consumerSettings, recordDecoder)
     }
   }
 }

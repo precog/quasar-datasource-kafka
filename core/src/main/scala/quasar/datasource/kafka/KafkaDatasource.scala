@@ -23,8 +23,8 @@ import cats.data.NonEmptyList
 import cats.effect._
 import cats.syntax.applicative._
 import cats.syntax.option._
-import eu.timepit.refined.auto._
 import fs2.Stream
+import quasar.ScalarStages
 import quasar.api.datasource.DatasourceType
 import quasar.api.resource.ResourcePath.Root
 import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
@@ -41,22 +41,37 @@ final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
   override def kind: DatasourceType = KafkaDatasourceModule.kind
 
   override def loaders: NonEmptyList[Loader[Resource[F, *], InterpretedRead[ResourcePath], QueryResult[F]]] =
-    NonEmptyList.of(Loader.Batch(BatchLoader.Full { (iRead: InterpretedRead[ResourcePath]) =>
-      iRead.path.unsnoc match {
-        case Some(Root -> ResourceName(topic)) if config.isTopic(topic) =>
-          for {
-            consumer <- consumerBuilder.mkConsumer
-            bytes <- consumer.fetch(topic)
-          } yield QueryResult.typed(config.format, bytes, iRead.stages)
+    NonEmptyList.of(Loader.Batch(
+      BatchLoader.Full((iRead: InterpretedRead[ResourcePath]) => evalPath(iRead, Function.tupled(fullConsumer)))))
 
-        case None =>
-          Resource.liftF(MonadError_[F, ResourceError].raiseError[QueryResult[F]](ResourceError.NotAResource(iRead.path)))
+  /**
+   * If the path is `/topic` and `topic` is configured for this datasource, pass it on to `mkConsumer`.
+   */
+  def evalPath(
+      iRead: InterpretedRead[ResourcePath],
+      mkConsumer: ((String, ScalarStages)) => Resource[F, QueryResult[F]])
+      : Resource[F, QueryResult[F]] = {
+    iRead.path.unsnoc match {
+      case Some(Root -> ResourceName(topic)) if config.isTopic(topic) =>
+        Function.untupled(mkConsumer)(topic, iRead.stages)
 
-        case _ =>
-          Resource.liftF(MonadError_[F, ResourceError].raiseError[QueryResult[F]](ResourceError.PathNotFound(iRead.path)))
-      }
-    }))
+      case None =>
+        Resource.liftF(MonadError_[F, ResourceError].raiseError[QueryResult[F]](ResourceError.NotAResource(iRead.path)))
 
+      case _ =>
+        Resource.liftF(MonadError_[F, ResourceError].raiseError[QueryResult[F]](ResourceError.PathNotFound(iRead.path)))
+    }
+  }
+
+  /**
+   * Produces a consumer resource given a valid topic.
+   */
+  def fullConsumer(topic: String, stages: ScalarStages): Resource[F, QueryResult[F]] = {
+    for {
+      consumer <- consumerBuilder.mkFullConsumer
+      bytes <- consumer.fetch(topic)
+    } yield QueryResult.typed(config.format, bytes, stages)
+  }
 
   override def pathIsResource(path: ResourcePath): Resource[F, Boolean] =
     Resource.liftF(path.unsnoc match {
