@@ -16,14 +16,11 @@
 
 package quasar.datasource.kafka
 
-import slamdata.Predef._
-
 import argonaut.Argonaut._
 import argonaut._
 import cats.effect.{ConcurrentEffect, ContextShift, Resource, Timer}
 import cats.implicits._
 import cats.kernel.Hash
-import eu.timepit.refined.auto._
 import quasar.RateLimiting
 import quasar.api.datasource.DatasourceError.InitializationError
 import quasar.api.datasource.{DatasourceError, DatasourceType}
