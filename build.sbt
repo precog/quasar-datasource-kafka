@@ -25,6 +25,7 @@ val specs2Version = "4.8.3"
 lazy val root = project
   .in(file("."))
   .settings(noPublishSettings)
+  .settings(name := "quasar-datasource-kafka-root")
   .aggregate(core)
 
 lazy val core = project
