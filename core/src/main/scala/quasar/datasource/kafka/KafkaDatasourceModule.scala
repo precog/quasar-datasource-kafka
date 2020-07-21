@@ -18,7 +18,7 @@ package quasar.datasource.kafka
 
 import argonaut.Argonaut._
 import argonaut._
-import cats.effect.{ConcurrentEffect, ContextShift, Resource, Timer}
+import cats.effect.{ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 import cats.implicits._
 import cats.kernel.Hash
 import quasar.RateLimiting
@@ -39,6 +39,9 @@ object KafkaDatasourceModule extends LightweightDatasourceModule {
     case Left(_) => config
     case Right(cfg) => cfg.sanitize.asJson
   }
+
+  def migrateConfig[F[_]: Sync](config: Json): F[Either[DatasourceError.ConfigurationError[Json], Json]] =
+    Sync[F].pure(Right(config))
 
   override def reconfigure(
     original: Json,
