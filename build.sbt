@@ -25,6 +25,7 @@ val specs2Version = "4.8.3"
 lazy val root = project
   .in(file("."))
   .settings(noPublishSettings)
+  .settings(name := "quasar-datasource-kafka-root")
   .aggregate(core)
 
 lazy val core = project
@@ -39,13 +40,16 @@ lazy val core = project
     quasarPluginDatasourceFqcn := Some("quasar.datasource.kafka.KafkaDatasourceModule$"),
 
     quasarPluginDependencies ++= Seq(
-      "com.github.fd4s"         %% "fs2-kafka"            % "1.0.0",
-      "org.slf4s"               %% "slf4s-api"            % "1.7.25",
-      "org.slf4j"               %  "slf4j-simple"         % "1.7.25" % Test,
-      "org.specs2"              %% "specs2-core"          % specs2Version % Test,
-      "org.specs2"              %% "specs2-matcher-extra" % specs2Version % Test,
-      "org.specs2"              %% "specs2-scalacheck"    % specs2Version % Test,
-      "org.specs2"              %% "specs2-scalaz"        % specs2Version % Test,
+      "com.github.fd4s"  %% "fs2-kafka"     % "1.0.0",
+      "org.apache.kafka" %  "kafka-clients" % "2.5.0",
+      "org.slf4s"        %% "slf4s-api"     % "1.7.25"),
+
+    libraryDependencies ++= Seq(
       "com.precog"              %% "quasar-foundation"    % quasarVersion.value % Test classifier "tests",
-      "io.github.embeddedkafka" %% "embedded-kafka"       % "2.5.0" % Test))
+      "io.github.embeddedkafka" %% "embedded-kafka"       % "2.5.0"             % Test,
+      "org.slf4j"               %  "slf4j-simple"         % "1.7.25"            % Test,
+      "org.specs2"              %% "specs2-core"          % specs2Version       % Test,
+      "org.specs2"              %% "specs2-matcher-extra" % specs2Version       % Test,
+      "org.specs2"              %% "specs2-scalacheck"    % specs2Version       % Test,
+      "org.specs2"              %% "specs2-scalaz"        % specs2Version       % Test))
   .enablePlugins(QuasarPlugin)

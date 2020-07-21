@@ -22,7 +22,6 @@ import org.specs2.mutable.Specification
 
 import argonaut.Argonaut._
 import argonaut._
-import eu.timepit.refined.auto._
 import quasar.api.datasource.{DatasourceError, DatasourceType}
 import quasar.connector.datasource.Reconfiguration
 
