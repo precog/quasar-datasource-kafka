@@ -24,14 +24,21 @@ val specs2Version = "4.8.3"
 
 lazy val root = project
   .in(file("."))
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings)
   .settings(noPublishSettings)
   .settings(name := "quasar-datasource-kafka-root")
   .aggregate(core)
 
 lazy val core = project
   .in(file("core"))
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings)
   .settings(
     name := "quasar-datasource-kafka",
+
+
+    IntegrationTest / parallelExecution := false,
 
     quasarPluginName := "url",
 
@@ -46,10 +53,20 @@ lazy val core = project
 
     libraryDependencies ++= Seq(
       "com.precog"              %% "quasar-foundation"    % quasarVersion.value % Test classifier "tests",
-      "io.github.embeddedkafka" %% "embedded-kafka"       % "2.5.0"             % Test,
       "org.slf4j"               %  "slf4j-simple"         % "1.7.25"            % Test,
       "org.specs2"              %% "specs2-core"          % specs2Version       % Test,
       "org.specs2"              %% "specs2-matcher-extra" % specs2Version       % Test,
       "org.specs2"              %% "specs2-scalacheck"    % specs2Version       % Test,
-      "org.specs2"              %% "specs2-scalaz"        % specs2Version       % Test))
+      "org.specs2"              %% "specs2-scalaz"        % specs2Version       % Test),
+
+    libraryDependencies ++= Seq(
+      "com.precog"              %% "quasar-foundation"    % quasarVersion.value % IntegrationTest classifier "tests",
+      "io.argonaut"             %% "argonaut-jawn"        % "6.3.0-M2"          % IntegrationTest,
+      "io.github.embeddedkafka" %% "embedded-kafka"       % "2.5.0"             % IntegrationTest,
+      "org.http4s"              %% "jawn-fs2"             % "1.0.0-RC2"         % IntegrationTest,
+      "org.slf4j"               %  "slf4j-simple"         % "1.7.25"            % IntegrationTest,
+      "org.specs2"              %% "specs2-core"          % specs2Version       % IntegrationTest,
+      "org.specs2"              %% "specs2-matcher-extra" % specs2Version       % IntegrationTest,
+      "org.specs2"              %% "specs2-scalacheck"    % specs2Version       % IntegrationTest,
+      "org.specs2"              %% "specs2-scalaz"        % specs2Version       % IntegrationTest))
   .enablePlugins(QuasarPlugin)
