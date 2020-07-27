@@ -63,8 +63,8 @@ lazy val it = project
   .settings(
     name := "quasar-datasource-kafka-integration-test",
 
-    // FIXME: it isn't making this exclusive
-    Test / test := (Test / test tag IT).value,
+    // FIXME: This forces normal tests to run before integration tests, but we just want mutual exclusion
+    Test / test := (Test/test tag IT).dependsOn(core/Test/test).value,
 
     Test / parallelExecution := false,
 
