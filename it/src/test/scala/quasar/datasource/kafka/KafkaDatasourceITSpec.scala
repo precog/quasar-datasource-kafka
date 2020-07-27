@@ -27,30 +27,26 @@ import org.specs2.specification.BeforeAfterAll
 import org.typelevel.jawn.AsyncParser
 
 import argonaut.Argonaut._
+import argonaut.JawnParser.facade
 import argonaut._
-import JawnParser.facade
-import jawnfs2._
-import cats.data.{EitherT, NonEmptyList}
-import cats.effect.{ContextShift, IO, Resource, Timer}
+import cats.data.EitherT
+import cats.effect.{IO, Resource}
 import cats.kernel.instances.uuid._
+import jawnfs2._
 import net.manub.embeddedkafka.{EmbeddedK, EmbeddedKafka, EmbeddedKafkaConfig}
 import quasar.api.datasource.DatasourceError.InitializationError
 import quasar.api.resource.{ResourceName, ResourcePath}
-import quasar.connector.datasource.LightweightDatasourceModule
 import quasar.connector.datasource.LightweightDatasourceModule.DS
-import quasar.connector.{ByteStore, DataFormat, QueryResult, ResourceError}
-import quasar.contrib.scalaz.MonadError_
+import quasar.connector.{ByteStore, DataFormat, QueryResult}
 import quasar.qscript.InterpretedRead
-import quasar.{NoopRateLimitUpdater, RateLimiter, RateLimiting, ScalarStages}
-
-import scala.concurrent.ExecutionContext
-import scala.sys
+import quasar.{NoopRateLimitUpdater, RateLimiter, ScalarStages}
 
 class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
   sequential
 
   import KafkaDatasourceITSpec._
 
+  // Do not declare val's depending on this
   var embeddedK: EmbeddedK = _
 
   override def beforeAll(): Unit = {
@@ -139,10 +135,7 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
 }
 
 object KafkaDatasourceITSpec {
-  implicit val ec: ExecutionContext = ExecutionContext.global
-  implicit val cs: ContextShift[IO] = IO.contextShift(ec)
-  implicit val timer: Timer[IO] = IO.timer(ec)
-  implicit val ioMonadResourceErr: MonadError_[IO, ResourceError] = MonadError_.facet[IO](ResourceError.throwableP)
+  import TestImplicits._
 
   implicit final class DatasourceOps(val ds: DS[IO]) extends scala.AnyVal {
     def evaluate(read: InterpretedRead[ResourcePath]): Resource[IO, QueryResult[IO]] =
