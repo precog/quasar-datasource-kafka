@@ -37,7 +37,7 @@ import net.manub.embeddedkafka.{EmbeddedK, EmbeddedKafka, EmbeddedKafkaConfig}
 import quasar.api.datasource.DatasourceError.InitializationError
 import quasar.api.resource.{ResourceName, ResourcePath}
 import quasar.connector.datasource.LightweightDatasourceModule.DS
-import quasar.connector.{ByteStore, DataFormat, QueryResult}
+import quasar.connector.{ByteStore, DataFormat, QueryResult, ResourceError}
 import quasar.qscript.InterpretedRead
 import quasar.{NoopRateLimitUpdater, RateLimiter, ScalarStages}
 
@@ -54,11 +54,15 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
     implicit val config: EmbeddedKafkaConfig = embeddedK.config
     implicit val stringSerializer: Serializer[String] = new StringSerializer
 
+    EmbeddedKafka.createCustomTopic("empty")
+    EmbeddedKafka.createCustomTopic("keyOnly")
     EmbeddedKafka.createCustomTopic("valueOnly")
     EmbeddedKafka.createCustomTopic("keyAndValue")
     EmbeddedKafka.createCustomTopic("partitioned", partitions = 5)
 
     EmbeddedKafka.withProducer[String, String, Unit] { producer =>
+      producer.send(new ProducerRecord("keyOnly", "false", null))
+
       producer.send(new ProducerRecord("valueOnly", s"{ ${q("key")}: ${q("value")} }"))
       producer.send(new ProducerRecord("valueOnly", "[1, 2, 3]"))
       producer.send(new ProducerRecord("valueOnly", q("string")))
@@ -116,6 +120,28 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
       }
     }
 
+    "reads keys as empty when keys are absent" >> {
+      def config =
+        ("topics" := List("valueOnly")) ->:
+          ("decoder" := Decoder.rawKey.asJson) ->:
+          baseConfig
+
+      evaluateTyped(config, "valueOnly").unsafeRunSync() must beLike {
+        case Right(jss) => jss must beEmpty
+      }
+    }
+
+    "reads values as empty when values are absent" >> {
+      def config =
+        ("topics" := List("keyOnly")) ->:
+          ("decoder" := Decoder.rawValue.asJson) ->:
+          baseConfig
+
+      evaluateTyped(config, "keyOnly").unsafeRunSync() must beLike {
+        case Right(jss) => jss must beEmpty
+      }
+    }
+
     "reads partitioned topics" >> {
       def config =
         ("topics" := List("valueOnly", "partitioned")) ->:
@@ -128,10 +154,45 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
         case Right(jss) => jss must containTheSameElementsAs(expected)
       }
     }
+
+    "returns empty on empty topics" >> {
+      def config =
+        ("topics" := List("empty")) ->:
+          ("decoder" := Decoder.rawValue.asJson) ->:
+          baseConfig
+
+      evaluateTyped(config, "empty").unsafeRunSync() must beLike {
+        case Right(jss) => jss must beEmpty
+      }
+    }
+
+    "returns empty on non-existing topic" >> {
+      def config =
+        ("topics" := List("inexistent")) ->:
+          ("decoder" := Decoder.rawValue.asJson) ->:
+          baseConfig
+
+      evaluateTyped(config, "inexistent").unsafeRunSync() must beLike {
+        case Right(jss) => jss must beEmpty
+      }
+    }
+
+    "returns error on topic not in config" >> {
+      def config =
+        ("topics" := List("empty")) ->:
+          ("decoder" := Decoder.rawValue.asJson) ->:
+          baseConfig
+
+      val resourcePath: ResourcePath = ResourcePath.Root / ResourceName("invalid")
+      evaluateTyped(config, "invalid").attempt.unsafeRunSync() must beLeft.like {
+        case ex => ResourceError.throwableP.getOption(ex) must beSome.like {
+          case ResourceError.PathNotFound(p) => p === resourcePath
+        }
+      }
+    }
   }
 
   override def afterAll(): Unit = EmbeddedKafka.stop()
-
 }
 
 object KafkaDatasourceITSpec {
@@ -166,13 +227,13 @@ object KafkaDatasourceITSpec {
     }
   }
 
-
   def useDatasource[A](cfg: Json)(f: DS[IO] => IO[A]): IO[Either[InitializationError[Json], A]] = {
     RateLimiter[IO, UUID](1.0, IO.delay(UUID.randomUUID()), NoopRateLimitUpdater[IO, UUID]).flatMap(rl =>
       KafkaDatasourceModule.lightweightDatasource[IO, UUID](cfg, rl, ByteStore.void[IO]) use { r =>
         EitherT.fromEither[IO](r).semiflatMap(f).value
       })
   }
+
   def q(s: String): String = s""""$s""""
 }
 

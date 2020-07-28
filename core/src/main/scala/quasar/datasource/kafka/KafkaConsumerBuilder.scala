@@ -56,8 +56,10 @@ object KafkaConsumerBuilder {
 
 
   def RawKey[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
-    (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) => Stream.chunk(Chunk.bytes(record.record.key))
+    (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) =>
+      Stream.chunk(Chunk.bytes(Option(record.record.key).getOrElse(Array.empty)))
 
   def RawValue[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
-    (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) => Stream.chunk(Chunk.bytes(record.record.value))
+    (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) =>
+      Stream.chunk(Chunk.bytes(Option(record.record.value).getOrElse(Array.empty)))
 }

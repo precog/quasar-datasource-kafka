@@ -47,7 +47,10 @@ class FullConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
     consumerResource[F].using(settings) evalMap { consumer =>
       for {
         endOffsets <- assignNonEmptyPartitionsForTopic(consumer, topic)
-      } yield takeUntilEndOffsets(consumer.partitionedStream, endOffsets).flatMap(decoder)
+      } yield {
+        if (endOffsets.nonEmpty) takeUntilEndOffsets(consumer.partitionedStream, endOffsets).flatMap(decoder)
+        else Stream.empty
+      }
     }
   }
 
