@@ -57,7 +57,7 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
     EmbeddedKafka.createCustomTopic("empty")
     EmbeddedKafka.createCustomTopic("keyOnly")
     EmbeddedKafka.createCustomTopic("valueOnly")
-    EmbeddedKafka.createCustomTopic("keyAndValue")
+    EmbeddedKafka.createCustomTopic("keyAndValue", partitions = 5)
     EmbeddedKafka.createCustomTopic("partitioned", partitions = 5)
 
     EmbeddedKafka.withProducer[String, String, Unit] { producer =>
@@ -105,7 +105,7 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
           baseConfig
 
       evaluateTyped(config, "keyAndValue").unsafeRunSync() must beLike {
-        case Right(jss) => jss must_=== List(jString("key"), Json.array(jNumber(1), jNumber(2), jNumber(3)))
+        case Right(jss) => jss must containTheSameElementsAs(List(jString("key"), Json.array(jNumber(1), jNumber(2), jNumber(3))))
       }
     }
 
@@ -116,7 +116,7 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
           baseConfig
 
       evaluateTyped(config, "keyAndValue").unsafeRunSync() must beLike {
-        case Right(jss) => jss must_=== List(jString("value"), jTrue)
+        case Right(jss) => jss must containTheSameElementsAs(List(jString("value"), jTrue))
       }
     }
 
