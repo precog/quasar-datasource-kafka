@@ -13,6 +13,9 @@ ThisBuild / scmInfo := Some(ScmInfo(
 
 ThisBuild / publishAsOSSProject := true
 
+lazy val IT = Tags.Tag("integrationTest")
+Global / concurrentRestrictions += Tags.exclusive(IT)
+
 // Include to also publish a project's tests
 lazy val publishTestsSettings = Seq(
   Test / packageBin / publishArtifact := true)
@@ -26,7 +29,7 @@ lazy val root = project
   .in(file("."))
   .settings(noPublishSettings)
   .settings(name := "quasar-datasource-kafka-root")
-  .aggregate(core)
+  .aggregate(core, it)
 
 lazy val core = project
   .in(file("core"))
@@ -46,10 +49,29 @@ lazy val core = project
 
     libraryDependencies ++= Seq(
       "com.precog"              %% "quasar-foundation"    % quasarVersion.value % Test classifier "tests",
-      "io.github.embeddedkafka" %% "embedded-kafka"       % "2.5.0"             % Test,
       "org.slf4j"               %  "slf4j-simple"         % "1.7.25"            % Test,
       "org.specs2"              %% "specs2-core"          % specs2Version       % Test,
       "org.specs2"              %% "specs2-matcher-extra" % specs2Version       % Test,
       "org.specs2"              %% "specs2-scalacheck"    % specs2Version       % Test,
       "org.specs2"              %% "specs2-scalaz"        % specs2Version       % Test))
   .enablePlugins(QuasarPlugin)
+
+lazy val it = project
+  .in(file("it"))
+  .dependsOn(core % "compile->compile;test->test")
+  .settings(noPublishSettings)
+  .settings(
+    name := "quasar-datasource-kafka-integration-test",
+
+    // FIXME: This forces normal tests to run before integration tests, but we just want mutual exclusion
+    Test / test := (Test/test tag IT).dependsOn(core/Test/test).value,
+
+    Test / parallelExecution := false,
+
+    libraryDependencies ++= Seq(
+      "com.precog"              %% "quasar-foundation"    % quasarVersion.value % Test classifier "tests",
+      "io.argonaut"             %% "argonaut-jawn"        % "6.3.0-M2"          % Test,
+      "io.github.embeddedkafka" %% "embedded-kafka"       % "2.5.0"             % Test,
+      "org.http4s"              %% "jawn-fs2"             % "1.0.0-RC2"         % Test,
+      "org.slf4j"               %  "slf4j-simple"         % "1.7.25"            % Test,
+      "org.specs2"              %% "specs2-core"          % specs2Version       % Test))

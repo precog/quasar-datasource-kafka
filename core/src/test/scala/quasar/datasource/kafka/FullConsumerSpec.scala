@@ -33,21 +33,21 @@ import scala.concurrent.duration._
 
 class FullConsumerSpec(implicit ec: ExecutionEnv) extends Specification with TerminationMatchers {
 
-  "assignTopic" >> {
+  "assignNonEmptyPartitionsForTopic" >> {
     "assigns all non empty partitions" >> {
-      todo
+      todo // requires KafkaConsumer to not be sealed (or use a mock framework)
     }
 
     "does not assign empty partitions" >> {
-      todo
+      todo // requires KafkaConsumer to not be sealed
     }
 
     "returns end offsets of all non empty partitions" >> {
-      todo
+      todo // requires KafkaConsumer to not be sealed
     }
 
     "does not return end offset of empty partitions" >> {
-      todo
+      todo // requires KafkaConsumer to not be sealed
     }
   }
 
