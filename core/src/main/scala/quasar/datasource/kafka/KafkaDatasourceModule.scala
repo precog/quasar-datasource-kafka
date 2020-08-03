@@ -26,10 +26,12 @@ import quasar.api.datasource.DatasourceError.InitializationError
 import quasar.api.datasource.{DatasourceError, DatasourceType}
 import quasar.connector.datasource.LightweightDatasourceModule.DS
 import quasar.connector.datasource.{LightweightDatasourceModule, Reconfiguration}
-import quasar.connector.{ByteStore, MonadResourceErr}
+import quasar.connector.{ByteStore, MonadResourceErr, ExternalCredentials}
 import scalaz.NonEmptyList
 
+import java.util.UUID
 import scala.concurrent.ExecutionContext
+import scala.Option
 import scala.util.{Either, Left, Right}
 
 object KafkaDatasourceModule extends LightweightDatasourceModule {
@@ -74,7 +76,8 @@ object KafkaDatasourceModule extends LightweightDatasourceModule {
   override def lightweightDatasource[F[_]: ConcurrentEffect: ContextShift: MonadResourceErr: Timer, A: Hash](
     config: Json,
     rateLimiting: RateLimiting[F, A],
-    byteStore: ByteStore[F])
+    byteStore: ByteStore[F],
+    getAuth: UUID => F[Option[ExternalCredentials[F]]])
     (implicit ec: ExecutionContext): Resource[F, Either[DatasourceError.InitializationError[Json], DS[F]]] = {
     config.as[Config].result match {
       case Right(kafkaConfig) =>
