@@ -229,11 +229,10 @@ object KafkaDatasourceITSpec {
 
   def useDatasource[A](cfg: Json)(f: DS[IO] => IO[A]): IO[Either[InitializationError[Json], A]] = {
     RateLimiter[IO, UUID](1.0, IO.delay(UUID.randomUUID()), NoopRateLimitUpdater[IO, UUID]).flatMap(rl =>
-      KafkaDatasourceModule.lightweightDatasource[IO, UUID](cfg, rl, ByteStore.void[IO]) use { r =>
+      KafkaDatasourceModule.lightweightDatasource[IO, UUID](cfg, rl, ByteStore.void[IO], _ => IO(None)) use { r =>
         EitherT.fromEither[IO](r).semiflatMap(f).value
       })
   }
 
   def q(s: String): String = s""""$s""""
 }
-
