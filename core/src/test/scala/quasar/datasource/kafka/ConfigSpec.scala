@@ -59,6 +59,7 @@ class ConfigSpec extends Specification {
           groupId = "precog",
           topics = NonEmptyList.of("a", "b", "c"),
           decoder = Decoder.rawKey,
+          tunnelConfig = None,
           format = DataFormat.ldjson))
     }
 
@@ -84,7 +85,102 @@ class ConfigSpec extends Specification {
           groupId = "precog",
           topics = NonEmptyList.of("a", "b", "c"),
           decoder = Decoder.rawKey,
+          tunnelConfig = None,
           format = DataFormat.gzipped(DataFormat.ldjson)))
+    }
+
+    "parses tunnel configuration" >> {
+      val s1 =
+        """
+          |{
+          | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
+          | "groupId": "precog",
+          | "topics": [ "a", "b", "c" ],
+          | "tunnelConfig": {
+          |   "user": "user",
+          |   "host": "host",
+          |   "port": 22,
+          |   "auth": null
+          | },
+          | "decoder": "RawKey",
+          | "format": {
+          |   "type": "json",
+          |   "variant": "line-delimited",
+          |   "precise": false
+          | }
+          |}""".stripMargin
+
+      val s2 =
+        """
+          |{
+          | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
+          | "groupId": "precog",
+          | "topics": [ "a", "b", "c" ],
+          | "tunnelConfig": {
+          |   "user": "user",
+          |   "host": "host",
+          |   "port": 22,
+          |   "auth": {
+          |     "password": "secret"
+          |   }
+          | },
+          | "decoder": "RawKey",
+          | "format": {
+          |   "type": "json",
+          |   "variant": "line-delimited",
+          |   "precise": false
+          | }
+          |}""".stripMargin
+
+      val s3 =
+        """
+          |{
+          | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
+          | "groupId": "precog",
+          | "topics": [ "a", "b", "c" ],
+          | "tunnelConfig": {
+          |   "user": "user",
+          |   "host": "host",
+          |   "port": 22,
+          |   "auth": {
+          |     "prv": "private_key",
+          |     "passphrase": "passphrase"
+          |   }
+          | },
+          | "decoder": "RawKey",
+          | "format": {
+          |   "type": "json",
+          |   "variant": "line-delimited",
+          |   "precise": false
+          | }
+          |}""".stripMargin
+
+      s1.decode[Config] must beRight(
+        Config(
+          bootstrapServers = NonEmptyList.of("a.b.c.d:xyzzy","d.e.f.g:yzzyx"),
+          groupId = "precog",
+          topics = NonEmptyList.of("a", "b", "c"),
+          decoder = Decoder.rawKey,
+          tunnelConfig = Some(TunnelConfig("host", 22, "user", None)),
+          format = DataFormat.ldjson))
+
+      s2.decode[Config] must beRight(
+        Config(
+          bootstrapServers = NonEmptyList.of("a.b.c.d:xyzzy","d.e.f.g:yzzyx"),
+          groupId = "precog",
+          topics = NonEmptyList.of("a", "b", "c"),
+          decoder = Decoder.rawKey,
+          tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))),
+          format = DataFormat.ldjson))
+
+      s3.decode[Config] must beRight(
+        Config(
+          bootstrapServers = NonEmptyList.of("a.b.c.d:xyzzy","d.e.f.g:yzzyx"),
+          groupId = "precog",
+          topics = NonEmptyList.of("a", "b", "c"),
+          decoder = Decoder.rawKey,
+          tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Identity("private_key", Some("passphrase"))))),
+          format = DataFormat.ldjson))
     }
 
     "fails on missing bootstrapServers" >> {
@@ -206,8 +302,29 @@ class ConfigSpec extends Specification {
   }
 
   "sanitize" >> {
-    "strips sensitive data" >> {
-      skipped
+    "hides tunnel password" >> {
+      val c = Config(
+        bootstrapServers = NonEmptyList.of("a.b.c.d:xyzzy","d.e.f.g:yzzyx"),
+        groupId = "precog",
+        topics = NonEmptyList.of("a", "b", "c"),
+        decoder = Decoder.rawKey,
+        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))),
+        format = DataFormat.ldjson)
+
+      c.sanitize.tunnelConfig must beSome(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("<REDACTED>"))))
+    }
+
+    "hides tunnel identity" >> {
+      val c = Config(
+        bootstrapServers = NonEmptyList.of("a.b.c.d:xyzzy","d.e.f.g:yzzyx"),
+        groupId = "precog",
+        topics = NonEmptyList.of("a", "b", "c"),
+        decoder = Decoder.rawKey,
+        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Identity("private_key", Some("passphrase"))))),
+        format = DataFormat.ldjson)
+
+      c.sanitize.tunnelConfig must
+        beSome(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Identity("<REDACTED>", Some("<REDACTED>")))))
     }
 
     "is identity on non-sensitive data" >> {
@@ -216,6 +333,7 @@ class ConfigSpec extends Specification {
         groupId = "precog",
         topics = NonEmptyList.of("a", "b", "c"),
         decoder = Decoder.rawValue,
+        tunnelConfig = None,
         format = DataFormat.json)
 
       c.sanitize mustEqual c
@@ -224,25 +342,59 @@ class ConfigSpec extends Specification {
 
   "reconfigure" >> {
     "replaces non-sensitive data as right" >> {
-      val c = Config(
+      val orig = Config(
         bootstrapServers = NonEmptyList.of("a.b.c.d:xyzzy","d.e.f.g:yzzyx"),
         groupId = "precog",
         topics = NonEmptyList.of("a", "b", "c"),
         decoder = Decoder.rawValue,
+        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))),
         format = DataFormat.json)
 
-      val d = Config(
+      val patch = Config(
         bootstrapServers = NonEmptyList.of("w.x.y.z:abcd"),
         groupId = "precog2",
         topics = NonEmptyList.of("topic"),
         decoder = Decoder.rawValue,
+        tunnelConfig = Some(TunnelConfig("server", 22222, "other", None)),
         format = DataFormat.json)
 
-      c.reconfigure(d) must beRight(d)
+      val expected = Config(
+        bootstrapServers = NonEmptyList.of("w.x.y.z:abcd"),
+        groupId = "precog2",
+        topics = NonEmptyList.of("topic"),
+        decoder = Decoder.rawValue,
+        tunnelConfig = Some(TunnelConfig("server", 22222, "other", Some(TunnelConfig.Auth.Password("secret")))),
+        format = DataFormat.json)
+
+      orig.reconfigure(patch) must beRight(expected)
     }
 
     "sanitizes patch with sensitive data as left" >> {
-      skipped
+      val orig = Config(
+        bootstrapServers = NonEmptyList.of("a.b.c.d:xyzzy","d.e.f.g:yzzyx"),
+        groupId = "precog",
+        topics = NonEmptyList.of("a", "b", "c"),
+        decoder = Decoder.rawValue,
+        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))),
+        format = DataFormat.json)
+
+      val patch = Config(
+        bootstrapServers = NonEmptyList.of("w.x.y.z:abcd"),
+        groupId = "precog2",
+        topics = NonEmptyList.of("topic"),
+        decoder = Decoder.rawValue,
+        tunnelConfig = Some(TunnelConfig("server", 22222, "other", Some(TunnelConfig.Auth.Identity("private_key", Some("passphrase"))))),
+        format = DataFormat.json)
+
+      val expected = Config(
+        bootstrapServers = NonEmptyList.of("w.x.y.z:abcd"),
+        groupId = "precog2",
+        topics = NonEmptyList.of("topic"),
+        decoder = Decoder.rawValue,
+        tunnelConfig = Some(TunnelConfig("server", 22222, "other", Some(TunnelConfig.Auth.Identity("<REDACTED>", Some("<REDACTED>"))))),
+        format = DataFormat.json)
+
+      orig.reconfigure(patch) must beLeft(expected)
     }
   }
 }
