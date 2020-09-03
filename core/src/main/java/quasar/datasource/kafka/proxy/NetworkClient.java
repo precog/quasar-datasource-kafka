@@ -1,12 +1,11 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
+ * Copyright 2020 Precog Data
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,10 +13,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package quasar.datasource.kafka.proxy;
 
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.nio.BufferUnderflowException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+
+import org.apache.kafka.clients.ApiVersions;
+import org.apache.kafka.clients.ClientDnsLookup;
+import org.apache.kafka.clients.ClientRequest;
+import org.apache.kafka.clients.ClientResponse;
 import org.apache.kafka.clients.KafkaClient;
+import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.MetadataUpdater;
+import org.apache.kafka.clients.NodeApiVersions;
+import org.apache.kafka.clients.RequestCompletionHandler;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Node;
@@ -49,24 +73,6 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 
-import java.io.IOException;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.nio.BufferUnderflowException;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Random;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
-
-import quasar.datasource.kafka.KafkaConsumerBuilder;
 import quasar.datasource.kafka.KafkaConsumerBuilder.TunnelSession;
 
 /**
@@ -164,7 +170,8 @@ public class NetworkClient implements KafkaClient {
              discoverBrokerVersions,
              apiVersions,
              null,
-             logContext);
+             logContext,
+             null);
     }
 
     public NetworkClient(Selectable selector,
@@ -300,7 +307,7 @@ public class NetworkClient implements KafkaClient {
         this.selector = selector;
         this.clientId = clientId;
         this.inFlightRequests = new InFlightRequests(maxInFlightRequestsPerConnection);
-        this.connectionStates = new ClusterConnectionStates(reconnectBackoffMs, reconnectBackoffMax, logContext);
+        this.connectionStates = new ClusterConnectionStates(reconnectBackoffMs, reconnectBackoffMax, logContext, tunnelSession);
         this.socketSendBuffer = socketSendBuffer;
         this.socketReceiveBuffer = socketReceiveBuffer;
         this.correlation = 0;
@@ -995,10 +1002,11 @@ public class NetworkClient implements KafkaClient {
         String nodeConnectionId = node.idString();
         try {
             connectionStates.connecting(nodeConnectionId, now, node.host(), clientDnsLookup);
-            InetAddress address = connectionStates.currentAddress(nodeConnectionId);
+            InetAddress address = connectionStates.currentAddress(nodeConnectionId, node.port());
+            int port = connectionStates.currentPort(nodeConnectionId, node.port());
             log.debug("Initiating connection to node {} using address {}", node, address);
             selector.connect(nodeConnectionId,
-                    new InetSocketAddress(address, node.port()),
+                    new InetSocketAddress(address, port),
                     this.socketSendBuffer,
                     this.socketReceiveBuffer);
         } catch (IOException e) {

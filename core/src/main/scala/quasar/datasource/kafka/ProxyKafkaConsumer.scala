@@ -18,22 +18,16 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
-import java.lang.reflect.Modifier
 import java.util.concurrent.TimeUnit
-import java.util.{Collections, Locale, Optional, List => JList, Map => JMap}
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.{Collections, List => JList, Map => JMap}
 
-import org.apache.kafka.clients.consumer.internals.PartitionAssignorAdapter.getAssignorInstances
-import org.apache.kafka.clients.consumer.internals.{ConsumerCoordinator, ConsumerInterceptors, ConsumerMetadata, ConsumerNetworkClient, Fetcher, FetcherMetricsRegistry, SubscriptionState}
-import org.apache.kafka.clients.{ApiVersions, ClientDnsLookup, ClientUtils, CommonClientConfigs, GroupRebalanceConfig, NetworkClient}
-import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerInterceptor, KafkaConsumer, OffsetResetStrategy}
-import org.apache.kafka.common.IsolationLevel
-import org.apache.kafka.common.errors.InvalidConfigurationException
+import org.apache.kafka.clients.GroupRebalanceConfig
+import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.common.internals.ClusterResourceListeners
 import org.apache.kafka.common.metrics.{JmxReporter, MetricConfig, Metrics, MetricsReporter, Sensor}
-import org.apache.kafka.common.network.Selector
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
-import org.apache.kafka.common.utils.{AppInfoParser, LogContext, Time}
+import org.apache.kafka.common.utils.Time
 
 import cats.effect.ConcurrentEffect
 import fs2.kafka.KafkaByteConsumer
@@ -41,7 +35,6 @@ import quasar.datasource.kafka.KafkaConsumerBuilder.TunnelSession
 
 import scala.Predef.classOf
 import scala.collection.JavaConverters._
-import scala.sys
 
 object ProxyKafkaConsumer {
   val ConsumerClientIdSequence = new AtomicInteger(1)

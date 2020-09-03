@@ -12,6 +12,8 @@ services:
 
   kafka:
     image: spotify/kafka:latest
+    environment:
+      ADVERTISED_HOST: kafka
 
 secrets:
   authorized_keys:

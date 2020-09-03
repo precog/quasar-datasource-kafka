@@ -18,6 +18,8 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
+import java.net.UnknownHostException
+
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Timer}
 import cats.data.NonEmptyList
 import cats.syntax.flatMap._
@@ -26,10 +28,12 @@ import com.jcraft.jsch._
 import fs2.kafka.{AutoOffsetReset, CommittableConsumerRecord, ConsumerSettings}
 import fs2.{Chunk, Stream}
 import quasar.connector.MonadResourceErr
+import quasar.datasource.kafka.KafkaConsumerBuilder.TunnelSession
+import slamdata.Predef
 
 class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : MonadResourceErr](
     config: Config,
-
+    tunnelSession: Option[TunnelSession],
     decoder: Decoder)
     extends ConsumerBuilder[F] {
 
@@ -48,7 +52,7 @@ class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : Mona
 
       val proxyConsumerSettings =
         if (config.tunnelConfig.isEmpty) consumerSettings
-        else consumerSettings.withCreateConsumer(ProxyKafkaConsumer(null, _)) // FIXME: pass TunnelSession
+        else consumerSettings.withCreateConsumer(ProxyKafkaConsumer(tunnelSession.orNull, _))
 
       FullConsumer(proxyConsumerSettings, recordDecoder)
     })
@@ -65,11 +69,11 @@ object KafkaConsumerBuilder {
       config: Config,
       decoder: Decoder)
       : Resource[F, ConsumerBuilder[F]] = {
-    val configResource = config.tunnelConfig match {
-      case Some(tunnelConfig) => viaTunnel(config, tunnelConfig, blocker)
-      case None               => Resource.pure(config)
+    val tunnelSessionResource = config.tunnelConfig match {
+      case Some(tunnelConfig) => viaTunnel(config, tunnelConfig, blocker).map(Some(_))
+      case None               => Resource.pure(None)
     }
-    for (sessionConfig <- configResource) yield new KafkaConsumerBuilder(sessionConfig, decoder)
+    for (tunnelSession <- tunnelSessionResource) yield new KafkaConsumerBuilder(config, tunnelSession, decoder)
   }
 
   // Decoders
@@ -87,7 +91,9 @@ object KafkaConsumerBuilder {
   // TODO: move to package level
   final case class TunnelSession(tunnels: List[((String, Int), Int)]) {
     def ports: List[Int] = tunnels.map(_._2)
-    def bootstrapServers: List[String] = ports.map(port => s"localhost:$port")
+    def resolve(host: String, port: Int): Int =
+      tunnels.find((host, port) == _._1).map(_._2).getOrElse(throw new UnknownHostException(s"$host:$port"))
+    def hasTunnel(port: Predef.Int): Boolean = tunnels.exists(port == _._2)
   }
 
   object Address {
@@ -107,24 +113,19 @@ object KafkaConsumerBuilder {
 
   def F[F[_]: ConcurrentEffect]: ConcurrentEffect[F] = ConcurrentEffect[F]
 
-  def tunneledSettings[F[_]: ConcurrentEffect](config: Config, tunnel: TunnelSession): F[Config] = F delay {
-    // TODO: maybe create dynamically? multibroker might need that
-    config.copy(bootstrapServers = NonEmptyList.fromListUnsafe(tunnel.bootstrapServers))
-  }
-
-  // TODO: tunnelSession and/or session need to be returned somehow (config? tuple?)
   def viaTunnel[F[_]: ConcurrentEffect: ContextShift](
     config: Config,
     tunnelConfig: TunnelConfig,
     blocker: Blocker)
-  : Resource[F, Config] = {
-      Resource(ContextShift[F].blockOn(blocker)(for {
-        jsch <- mkJSch
-        session <- mkSession(jsch, tunnelConfig)
-        _ <- setUserInfo(session, toUserInfo(tunnelConfig))
-        tunnelSession <- openTunnel(session, config.bootstrapServers)
-        result <- tunneledSettings(config, tunnelSession)
-      } yield (result, ContextShift[F].blockOn(blocker)(closeTunnel(session, tunnelSession)))))
+  : Resource[F, TunnelSession] = {
+      Resource(ContextShift[F].blockOn(blocker) {
+        for {
+          jsch <- mkJSch
+          session <- mkSession(jsch, tunnelConfig)
+          _ <- setUserInfo(session, toUserInfo(tunnelConfig))
+          tunnelSession <- openTunnel(session, config.bootstrapServers)
+        } yield (tunnelSession, ContextShift[F].blockOn(blocker)(closeTunnel(session, tunnelSession)))
+      })
   }
 
   def mkJSch[F[_]: ConcurrentEffect]: F[JSch] = F.delay(new JSch())
