@@ -18,7 +18,8 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
-import argonaut._, Argonaut._
+import argonaut._
+import Argonaut._
 
 final case class TunnelConfig(
   host: String,
@@ -28,6 +29,7 @@ final case class TunnelConfig(
   extends Product with Serializable {
   import TunnelConfig._
   import TunnelConfig.Auth._
+
   def sanitize: TunnelConfig = {
     val newPass: Option[Auth] = auth map {
       case Password(_) => Password("<REDACTED>")
@@ -35,17 +37,30 @@ final case class TunnelConfig(
     }
     copy(auth = newPass)
   }
+
+  def getPassword: String = auth.map(_.getPassword).getOrElse("")
+  def getPassphrase: String = auth.map(_.getPassphrase).getOrElse("")
 }
 
 object TunnelConfig {
   implicit val codecTunnelConfig: CodecJson[TunnelConfig] =
     casecodec4(TunnelConfig.apply, TunnelConfig.unapply)("host", "port", "user", "auth")
 
-  sealed trait Auth
+  sealed trait Auth {
+    def getPassword: String
+    def getPassphrase: String
+  }
 
   object Auth {
-    final case class Identity(prv: String, passphrase: Option[String]) extends Auth
-    final case class Password(password: String) extends Auth
+    final case class Identity(prv: String, passphrase: Option[String]) extends Auth {
+      override def getPassword: String = ""
+      override def getPassphrase: String = passphrase.getOrElse("")
+    }
+
+    final case class Password(password: String) extends Auth {
+      override def getPassword: String = password
+      override def getPassphrase: String = ""
+    }
 
     implicit val codecIdentity: CodecJson[Identity] =
       casecodec2(Identity.apply, Identity.unapply)("prv", "passphrase")

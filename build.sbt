@@ -44,6 +44,7 @@ lazy val core = project
 
     quasarPluginDependencies ++= Seq(
       "com.github.fd4s"  %% "fs2-kafka"     % "1.0.0",
+      "com.jcraft"       %  "jsch"          % "0.1.55",
       "org.apache.kafka" %  "kafka-clients" % "2.5.0",
       "org.slf4s"        %% "slf4s-api"     % "1.7.25"),
 

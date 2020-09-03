@@ -168,11 +168,11 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
 
     "returns empty on non-existing topic" >> {
       def config =
-        ("topics" := List("inexistent")) ->:
+        ("topics" := List("nonexistent")) ->:
           ("decoder" := Decoder.rawValue.asJson) ->:
           baseConfig
 
-      evaluateTyped(config, "inexistent").unsafeRunSync() must beLike {
+      evaluateTyped(config, "nonexistent").unsafeRunSync() must beLike {
         case Right(jss) => jss must beEmpty
       }
     }
@@ -190,6 +190,51 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
         }
       }
     }
+  }
+
+  "Tunnelled Datasource" >> {
+    def baseConfig = Json(
+      "bootstrapServers" := List("kafka:9092"),
+      "groupId" := "precog",
+      "tunnelConfig" := Json(
+        "host" := "localhost",
+        "port" := 22222,
+        "user" := "root",
+        "auth" := Json(
+          "password" := "root"
+        )
+      ),
+      "format" := Json(
+        "type" := "json",
+        "variant" := "line-delimited",
+        "precise" := false)
+    )
+
+    "reads same server topics" >> {
+      def config =
+        ("topics" := List("sameServer")) ->:
+          ("decoder" := Decoder.rawValue.asJson) ->:
+          baseConfig
+
+      evaluateTyped(config, "sameServer").unsafeRunSync() must beLike {
+        case Right(jss) => jss must_=== List(
+          jString("same"),
+          jString("server"))
+      }
+    }
+
+    "reads different server topics" >> {
+      def config =
+        ("topics" := List("sameServer, otherServer")) ->:
+          ("decoder" := Decoder.rawValue.asJson) ->:
+          baseConfig
+
+      evaluateTyped(config, "otherServer").unsafeRunSync() must beLike {
+        case Right(jss) => jss must_=== List(
+          jString("other"),
+          jString("server"))
+      }
+    }.pendingUntilFixed
   }
 
   override def afterAll(): Unit = EmbeddedKafka.stop()
@@ -218,7 +263,7 @@ object KafkaDatasourceITSpec {
         case QueryResult.Typed(`awJson`, bytes, ScalarStages.Id) =>
           bytes.chunks.parseJson[Json](AsyncParser.UnwrapArray).compile.toList
 
-        case QueryResult.Typed(format, bytes, ScalarStages.Id) =>
+        case QueryResult.Typed(format, _, ScalarStages.Id) =>
           IO.raiseError(new RuntimeException(s"Unknown format $format"))
 
         case query =>

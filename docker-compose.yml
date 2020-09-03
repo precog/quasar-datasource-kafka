@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  sshd:
+    image: rastasheep/ubuntu-sshd:18.04
+    ports:
+      - "22222:22"
+    secrets:
+      - source: authorized_keys
+        target: /root/.ssh/authorized_keys
+        mode: 0600
+
+  kafka:
+    image: spotify/kafka:latest
+
+secrets:
+  authorized_keys:
+    file: ./key_for_docker.pub

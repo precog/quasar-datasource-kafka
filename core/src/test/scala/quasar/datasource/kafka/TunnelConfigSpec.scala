@@ -38,4 +38,33 @@ class TunnelConfigSpec extends Specification with ScalaCheck {
         Some(Identity(params._4, params._5))))
     }
   }
+
+  "TunnelConfig" >> {
+    val identity = TunnelConfig.Auth.Identity("private_key", Some("aPassphrase"))
+    val password = TunnelConfig.Auth.Password("aPassword")
+
+    "getPassword is empty string if no auth" >> {
+      TunnelConfig("localhost", 22222, "root", None).getPassword must beEmpty
+    }
+
+    "getPassphrase is empty string if no auth" >> {
+      TunnelConfig("localhost", 22222, "root", None).getPassphrase must beEmpty
+    }
+
+    "getPassword is empty string if auth is identity" >> {
+      TunnelConfig("localhost", 22222, "root", Some(identity)).getPassword must beEmpty
+    }
+
+    "getPassphrase is empty string if auth is password" >> {
+      TunnelConfig("localhost", 22222, "root", Some(password)).getPassphrase must beEmpty
+    }
+
+    "getPassword is returns Password's password" >> {
+      TunnelConfig("localhost", 22222, "root", Some(password)).getPassword must_=== "aPassword"
+    }
+
+    "getPassphrase is returns Identity's passphrase" >> {
+      TunnelConfig("localhost", 22222, "root", Some(identity)).getPassphrase must_=== "aPassphrase"
+    }
+  }
 }
