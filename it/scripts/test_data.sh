@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+echo "Creating topics"
+
 for topic in empty keyOnly valueOnly; do
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --create --topic "$topic" --partitions 1 --replication-factor 1
 done
@@ -7,6 +9,8 @@ done
 for topic in keyAndValue partitioned; do
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --create --topic "$topic" --partitions 5 --replication-factor 1
 done
+
+echo "Loading test data"
 
 time "${KAFKA_HOME}/bin/kafka-console-producer.sh" --broker-list localhost:9092 --sync --topic keyOnly \
   --property "parse.key=true" \
@@ -31,6 +35,7 @@ time "${KAFKA_HOME}/bin/kafka-console-producer.sh" --broker-list localhost:9092 
   <<< "$(printf '{ "number": %d }' $(seq 1 50))"
 
 if [[ "$ADVERTISED_HOST" == "kafka_ssh" ]]; then
+  echo "Single broker topic and test data"
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --create --topic sameServer --partitions 1 --replication-factor 1
   "${KAFKA_HOME}/bin/kafka-console-producer.sh" --broker-list localhost:9092 --sync --topic sameServer << EOF
 "same"
