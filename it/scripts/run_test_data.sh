@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 
-echo "Docker stack ps"
-docker stack ps teststack
+docker node ls
 
-for id in $(docker stack ps teststack -f 'name=teststack_kafka' -q); do
-  echo "Loading data on node $id"
-  docker exec -it "teststack_$service.1.$id" /bin/bash /run/secrets/test_data.sh
-done
-
-echo "Docker service ps"
-
-for service in kafka_ssh kafka_local; do
-  echo "Service $service"
-  docker service ps "teststack_$service"
-  id="$(docker service ps -f "name=teststack_$service.1" "teststack_$service" --no-trunc -q | head -n1)"
-  echo "Loading data on container teststack_$service.1.$id"
-  docker exec -it "teststack_$service.1.$id" /bin/bash /run/secrets/test_data.sh
+for node in $(docker node ls -q); do
+  echo "Node $node"
+  if type -p docker-machine; then
+    eval $(docker-machine env "$node")
+  else
+    echo "Skipping docker-machine (not available)"
+  fi
+  docker node ps -f name=teststack_kafka "$node"
+  for service in $(docker node ps --format="{{.Name}}.{{.ID}}" --no-trunc -f name=teststack_kafka "$node"); do
+    echo "Loading test data on $service"
+    docker exec -it "$service" /bin/bash /run/secrets/test_data.sh
+  done
 done
