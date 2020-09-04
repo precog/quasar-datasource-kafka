@@ -72,7 +72,6 @@ lazy val it = project
     libraryDependencies ++= Seq(
       "com.precog"              %% "quasar-foundation"    % quasarVersion.value % Test classifier "tests",
       "io.argonaut"             %% "argonaut-jawn"        % "6.3.0-M2"          % Test,
-      "io.github.embeddedkafka" %% "embedded-kafka"       % "2.5.0"             % Test,
       "org.http4s"              %% "jawn-fs2"             % "1.0.0-RC2"         % Test,
       "org.slf4j"               %  "slf4j-simple"         % "1.7.25"            % Test,
       "org.specs2"              %% "specs2-core"          % specs2Version       % Test))

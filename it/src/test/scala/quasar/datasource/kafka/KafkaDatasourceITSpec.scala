@@ -20,10 +20,7 @@ import slamdata.Predef._
 
 import java.util.UUID
 
-import org.apache.kafka.clients.producer.ProducerRecord
-import org.apache.kafka.common.serialization.{Serializer, StringSerializer}
 import org.specs2.mutable.Specification
-import org.specs2.specification.BeforeAfterAll
 import org.typelevel.jawn.AsyncParser
 
 import argonaut.Argonaut._
@@ -33,7 +30,6 @@ import cats.data.EitherT
 import cats.effect.{IO, Resource}
 import cats.kernel.instances.uuid._
 import jawnfs2._
-import net.manub.embeddedkafka.{EmbeddedK, EmbeddedKafka, EmbeddedKafkaConfig}
 import quasar.api.datasource.DatasourceError.InitializationError
 import quasar.api.resource.{ResourceName, ResourcePath}
 import quasar.connector.datasource.LightweightDatasourceModule.DS
@@ -41,42 +37,13 @@ import quasar.connector.{ByteStore, DataFormat, QueryResult, ResourceError}
 import quasar.qscript.InterpretedRead
 import quasar.{NoopRateLimitUpdater, RateLimiter, ScalarStages}
 
-class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
-  sequential
+class KafkaDatasourceITSpec extends Specification {
 
   import KafkaDatasourceITSpec._
 
-  // Do not declare val's depending on this
-  var embeddedK: EmbeddedK = _
-
-  override def beforeAll(): Unit = {
-    embeddedK = EmbeddedKafka.start()(EmbeddedKafkaConfig(kafkaPort = 0, zooKeeperPort = 0))
-    implicit val config: EmbeddedKafkaConfig = embeddedK.config
-    implicit val stringSerializer: Serializer[String] = new StringSerializer
-
-    EmbeddedKafka.createCustomTopic("empty")
-    EmbeddedKafka.createCustomTopic("keyOnly")
-    EmbeddedKafka.createCustomTopic("valueOnly")
-    EmbeddedKafka.createCustomTopic("keyAndValue", partitions = 5)
-    EmbeddedKafka.createCustomTopic("partitioned", partitions = 5)
-
-    EmbeddedKafka.withProducer[String, String, Unit] { producer =>
-      producer.send(new ProducerRecord("keyOnly", "false", null))
-
-      producer.send(new ProducerRecord("valueOnly", s"{ ${q("key")}: ${q("value")} }"))
-      producer.send(new ProducerRecord("valueOnly", "[1, 2, 3]"))
-      producer.send(new ProducerRecord("valueOnly", q("string")))
-
-      producer.send(new ProducerRecord("keyAndValue", q("key"), q("value")))
-      producer.send(new ProducerRecord("keyAndValue", "[1, 2, 3]", "true"))
-
-      for (number <- 1 to 50) producer.send(new ProducerRecord("partitioned", s"""{ "number": $number }"""))
-    }
-  }
-
   "Datasource" >> {
     def baseConfig = Json(
-      "bootstrapServers" := List(s"localhost:${embeddedK.config.kafkaPort}"),
+      "bootstrapServers" := List(s"localhost:9092"),
       "groupId" := "precog",
       "format" := Json(
         "type" := "json",
@@ -194,7 +161,7 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
 
   "Tunnelled Datasource" >> {
     def baseConfig = Json(
-      "bootstrapServers" := List("kafka:9092"),
+      "bootstrapServers" := List("kafka_ssh:9092"),
       "groupId" := "precog",
       "tunnelConfig" := Json(
         "host" := "localhost",
@@ -209,6 +176,20 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
         "variant" := "line-delimited",
         "precise" := false)
     )
+
+    "reads value only topics" >> {
+      def config =
+        ("topics" := List("valueOnly", "partitioned")) ->:
+          ("decoder" := Decoder.rawValue.asJson) ->:
+          baseConfig
+
+      evaluateTyped(config, "valueOnly").unsafeRunSync() must beLike {
+        case Right(jss) => jss must_=== List(
+          Json("key" := jString("value")),
+          Json.array(jNumber(1), jNumber(2), jNumber(3)),
+          jString("string"))
+      }
+    }
 
     "reads same server topics" >> {
       def config =
@@ -236,8 +217,6 @@ class KafkaDatasourceITSpec extends Specification with BeforeAfterAll {
       }
     }.pendingUntilFixed
   }
-
-  override def afterAll(): Unit = EmbeddedKafka.stop()
 }
 
 object KafkaDatasourceITSpec {
