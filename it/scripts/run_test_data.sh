@@ -2,6 +2,10 @@
 
 docker node ls
 
+if [[ -x /tmp/docker-machine ]]; then
+  /tmp/docker-machine ls
+fi
+
 for node in $(docker node ls -q); do
   echo "Node $node"
   if [[ -x /tmp/docker-machine ]]; then
