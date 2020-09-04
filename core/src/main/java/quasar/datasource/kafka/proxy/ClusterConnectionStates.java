@@ -1,12 +1,11 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
+ * Copyright 2020 Precog Data
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,13 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.kafka.clients;
 
-import java.util.concurrent.ThreadLocalRandom;
-
-import org.apache.kafka.common.errors.AuthenticationException;
-import org.apache.kafka.common.utils.LogContext;
-import org.slf4j.Logger;
+package quasar.datasource.kafka.proxy;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -28,6 +22,15 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
+
+import org.apache.kafka.clients.ClientDnsLookup;
+import org.apache.kafka.clients.ConnectionState;
+import org.apache.kafka.common.errors.AuthenticationException;
+import org.apache.kafka.common.utils.LogContext;
+import org.slf4j.Logger;
+
+import quasar.datasource.kafka.TunnelSession;
 
 /**
  * The state of our connection to each node in the cluster.
@@ -38,14 +41,17 @@ final class ClusterConnectionStates {
     private final long reconnectBackoffMaxMs;
     private final static int RECONNECT_BACKOFF_EXP_BASE = 2;
     private final double reconnectBackoffMaxExp;
+    private final TunnelSession tunnelSession;
     private final Map<String, NodeConnectionState> nodeState;
     private final Logger log;
 
-    public ClusterConnectionStates(long reconnectBackoffMs, long reconnectBackoffMaxMs, LogContext logContext) {
+    public ClusterConnectionStates(long reconnectBackoffMs, long reconnectBackoffMaxMs, LogContext logContext,
+                                   TunnelSession tunnelSession) {
         this.log = logContext.logger(ClusterConnectionStates.class);
         this.reconnectBackoffInitMs = reconnectBackoffMs;
         this.reconnectBackoffMaxMs = reconnectBackoffMaxMs;
         this.reconnectBackoffMaxExp = Math.log(this.reconnectBackoffMaxMs / (double) Math.max(reconnectBackoffMs, 1)) / Math.log(RECONNECT_BACKOFF_EXP_BASE);
+        this.tunnelSession = tunnelSession;
         this.nodeState = new HashMap<>();
     }
 
@@ -147,8 +153,8 @@ final class ClusterConnectionStates {
      * @param id the id of the connection
      * @throws UnknownHostException if the address was not resolvable
      */
-    public InetAddress currentAddress(String id) throws UnknownHostException {
-        return nodeState(id).currentAddress();
+    public InetAddress currentAddress(String id, int port) throws UnknownHostException {
+        return nodeState(id).currentAddress(tunnelSession, port);
     }
 
     /**
@@ -357,6 +363,10 @@ final class ClusterConnectionStates {
         return state;
     }
 
+    public int currentPort(String id, int port) throws UnknownHostException {
+        return nodeState(id).currentPort(tunnelSession, port);
+    }
+
     /**
      * The state of our connection to a node.
      */
@@ -373,6 +383,7 @@ final class ClusterConnectionStates {
         private int addressIndex;
         private final String host;
         private final ClientDnsLookup clientDnsLookup;
+        private int port;
 
         private NodeConnectionState(ConnectionState state, long lastConnectAttempt, long reconnectBackoffMs,
                 String host, ClientDnsLookup clientDnsLookup) {
@@ -396,11 +407,20 @@ final class ClusterConnectionStates {
          * Fetches the current selected IP address for this node, resolving {@link #host()} if necessary.
          * @return the selected address
          * @throws UnknownHostException if resolving {@link #host()} fails
+         * @param tunnelSession tunnel information, if using a tunneled connection
+         * @param port port to be connected on the node
          */
-        private InetAddress currentAddress() throws UnknownHostException {
+        private InetAddress currentAddress(TunnelSession tunnelSession, int port) throws UnknownHostException {
             if (addresses.isEmpty()) {
                 // (Re-)initialize list
-                addresses = ClientUtils.resolve(host, clientDnsLookup);
+                if (tunnelSession == null || (host.equals("localhost") && tunnelSession.hasTunnel(port))) {
+                    // (Re-)initialize list
+                    this.port = port;
+                    addresses = ProxyUtils.resolve(host, clientDnsLookup);
+                } else {
+                    this.port = tunnelSession.resolve(host, port);
+                    addresses = ProxyUtils.resolve("localhost", clientDnsLookup);
+                }
                 addressIndex = 0;
             }
 
@@ -408,8 +428,24 @@ final class ClusterConnectionStates {
         }
 
         /**
+         * Fetches the current port for this node if tunneled, resolving {@link #host()} if necessary.
+         * Otherwise, return the port passed.
+         * @return the selected address
+         * @throws UnknownHostException if resolving {@link #host()} fails
+         * @param tunnelSession tunnel information, if using a tunneled connection
+         * @param port port to be connected on the node
+         */
+        public int currentPort(TunnelSession tunnelSession, int port) throws UnknownHostException {
+            if (tunnelSession != null)
+                currentAddress(tunnelSession, port);
+            else
+                this.port = port;
+            return this.port;
+        }
+
+        /**
          * Jumps to the next available resolved address for this node. If no other addresses are available, marks the
-         * list to be refreshed on the next {@link #currentAddress()} call.
+         * list to be refreshed on the next {@link #currentAddress(TunnelSession, int)} call.
          */
         private void moveToNextAddress() {
             if (addresses.isEmpty())
