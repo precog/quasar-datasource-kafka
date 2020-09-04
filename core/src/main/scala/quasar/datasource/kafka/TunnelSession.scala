@@ -18,20 +18,27 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
+import java.util.concurrent.atomic.AtomicReference
+
 import com.jcraft.jsch.Session
 
 final case class TunnelSession(session: Session) {
-  // FIXME: make it thread-safe
-  private var tunnels: List[((String, Int), Int)] = Nil
-  def ports: List[Int] = tunnels.map(_._2)
+  private[this] val tunnelsRef: AtomicReference[List[((String, Int), Int)]] = new AtomicReference(Nil)
+  def ports: List[Int] = tunnelsRef.get().map(_._2)
   def resolve(host: String, port: Int): Int = {
-    tunnels.find((host, port) == _._1).map(_._2) getOrElse {
+    var tunnels = tunnelsRef.get()
+    var currentPort = tunnels.find((host, port) == _._1).map(_._2)
+    while (currentPort.isEmpty) {
       val localPort = session.setPortForwardingL(0, host, port)
-      tunnels ::= (host, port) -> localPort
-      localPort
+      if (tunnelsRef.compareAndSet(tunnels, ((host, port) -> localPort) :: tunnels)) {
+        currentPort = Some(localPort)
+      } else {
+        session.delPortForwardingL(localPort)
+        tunnels = tunnelsRef.get()
+      }
     }
+    currentPort.get
   }
 
-  def hasTunnel(port: Int): Boolean = tunnels.exists(port == _._2)
+  def hasTunnel(port: Int): Boolean = tunnelsRef.get().exists(port == _._2)
 }
-
