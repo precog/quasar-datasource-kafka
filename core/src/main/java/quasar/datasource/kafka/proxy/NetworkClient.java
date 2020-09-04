@@ -73,7 +73,7 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 
-import quasar.datasource.kafka.KafkaConsumerBuilder.TunnelSession;
+import quasar.datasource.kafka.TunnelSession;
 
 /**
  * A network client for asynchronous request/response network i/o. This is an internal class used to implement the

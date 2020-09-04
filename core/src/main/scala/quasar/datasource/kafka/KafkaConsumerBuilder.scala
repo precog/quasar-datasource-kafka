@@ -18,18 +18,13 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
-import java.net.UnknownHostException
-
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Timer}
-import cats.data.NonEmptyList
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import com.jcraft.jsch._
 import fs2.kafka.{AutoOffsetReset, CommittableConsumerRecord, ConsumerSettings}
 import fs2.{Chunk, Stream}
 import quasar.connector.MonadResourceErr
-import quasar.datasource.kafka.KafkaConsumerBuilder.TunnelSession
-import slamdata.Predef
 
 class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : MonadResourceErr](
     config: Config,
@@ -70,7 +65,7 @@ object KafkaConsumerBuilder {
       decoder: Decoder)
       : Resource[F, ConsumerBuilder[F]] = {
     val tunnelSessionResource = config.tunnelConfig match {
-      case Some(tunnelConfig) => viaTunnel(config, tunnelConfig, blocker).map(Some(_))
+      case Some(tunnelConfig) => viaTunnel(tunnelConfig, blocker).map(Some(_))
       case None               => Resource.pure(None)
     }
     for (tunnelSession <- tunnelSessionResource) yield new KafkaConsumerBuilder(config, tunnelSession, decoder)
@@ -87,14 +82,6 @@ object KafkaConsumerBuilder {
       Stream.chunk(Chunk.bytes(Option(record.record.value).getOrElse(Array.empty)))
 
   // Tunnel
-
-  // TODO: move to package level
-  final case class TunnelSession(tunnels: List[((String, Int), Int)]) {
-    def ports: List[Int] = tunnels.map(_._2)
-    def resolve(host: String, port: Int): Int =
-      tunnels.find((host, port) == _._1).map(_._2).getOrElse(throw new UnknownHostException(s"$host:$port"))
-    def hasTunnel(port: Predef.Int): Boolean = tunnels.exists(port == _._2)
-  }
 
   object Address {
     val DefaultKafkaPort = 9092
@@ -114,18 +101,18 @@ object KafkaConsumerBuilder {
   def F[F[_]: ConcurrentEffect]: ConcurrentEffect[F] = ConcurrentEffect[F]
 
   def viaTunnel[F[_]: ConcurrentEffect: ContextShift](
-    config: Config,
-    tunnelConfig: TunnelConfig,
-    blocker: Blocker)
-  : Resource[F, TunnelSession] = {
-      Resource(ContextShift[F].blockOn(blocker) {
-        for {
-          jsch <- mkJSch
-          session <- mkSession(jsch, tunnelConfig)
-          _ <- setUserInfo(session, toUserInfo(tunnelConfig))
-          tunnelSession <- openTunnel(session, config.bootstrapServers)
-        } yield (tunnelSession, ContextShift[F].blockOn(blocker)(closeTunnel(session, tunnelSession)))
-      })
+      tunnelConfig: TunnelConfig,
+      blocker: Blocker)
+      : Resource[F, TunnelSession] = {
+    Resource(ContextShift[F].blockOn[(TunnelSession, F[Unit])](blocker) {
+      for {
+        jsch <- mkJSch
+        session <- mkSession(jsch, tunnelConfig)
+        _ <- setUserInfo(session, toUserInfo(tunnelConfig))
+        _ <- F.delay(session.connect())
+        tunnelSession = TunnelSession(session)
+      } yield (tunnelSession, ContextShift[F].blockOn(blocker)(closeTunnel(session, tunnelSession)))
+    })
   }
 
   def mkJSch[F[_]: ConcurrentEffect]: F[JSch] = F.delay(new JSch())
@@ -150,12 +137,6 @@ object KafkaConsumerBuilder {
           } yield s
       }
   }
-
-  def openTunnel[F[_]: ConcurrentEffect](session: Session, addresses: NonEmptyList[String]): F[TunnelSession] = for {
-    _ <- F.delay(session.connect())
-    tunnels <- F.delay(for (Address(host, port) <- addresses)
-      yield ((host, port), session.setPortForwardingL(0, host, port)))
-  } yield TunnelSession(tunnels.toList)
 
   def closeTunnel[F[_]: ConcurrentEffect](session: Session, tunnelSession: TunnelSession): F[Unit] = for {
     _ <- F.delay(for (port <- tunnelSession.ports) yield session.delPortForwardingL(port))

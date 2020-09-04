@@ -31,7 +31,6 @@ import org.apache.kafka.common.utils.Time
 
 import cats.effect.ConcurrentEffect
 import fs2.kafka.KafkaByteConsumer
-import quasar.datasource.kafka.KafkaConsumerBuilder.TunnelSession
 
 import scala.Predef.classOf
 import scala.collection.JavaConverters._

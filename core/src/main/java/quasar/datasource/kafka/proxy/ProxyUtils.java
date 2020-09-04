@@ -33,7 +33,7 @@ import org.apache.kafka.common.config.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import quasar.datasource.kafka.KafkaConsumerBuilder.TunnelSession;
+import quasar.datasource.kafka.TunnelSession;
 
 public final class ProxyUtils {
   private static final Logger log = LoggerFactory.getLogger(ClientUtils.class);

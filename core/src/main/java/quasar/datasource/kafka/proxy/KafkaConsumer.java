@@ -16,6 +16,8 @@
 
 package quasar.datasource.kafka.proxy;
 
+import java.lang.String;
+import java.lang.Object;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Collection;
@@ -94,7 +96,7 @@ import org.apache.kafka.common.utils.Timer;
 import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 
-import quasar.datasource.kafka.KafkaConsumerBuilder.TunnelSession;
+import quasar.datasource.kafka.TunnelSession;
 
 /**
  * A client that consumes records from a Kafka cluster.

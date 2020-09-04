@@ -30,7 +30,7 @@ import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.utils.LogContext;
 import org.slf4j.Logger;
 
-import quasar.datasource.kafka.KafkaConsumerBuilder.TunnelSession;
+import quasar.datasource.kafka.TunnelSession;
 
 /**
  * The state of our connection to each node in the cluster.
