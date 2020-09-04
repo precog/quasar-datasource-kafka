@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 import com.jcraft.jsch.Session
 
-final case class TunnelSession(session: Session) {
+final class TunnelSession private (session: Session) {
   private[this] val tunnelsRef: AtomicReference[List[((String, Int), Int)]] = new AtomicReference(Nil)
   def ports: List[Int] = tunnelsRef.get().map(_._2)
   def resolve(host: String, port: Int): Int = {
@@ -41,4 +41,8 @@ final case class TunnelSession(session: Session) {
   }
 
   def hasTunnel(port: Int): Boolean = tunnelsRef.get().exists(port == _._2)
+}
+
+object TunnelSession {
+  def apply(session: Session): TunnelSession = new TunnelSession(session)
 }
