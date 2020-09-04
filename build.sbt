@@ -13,6 +13,17 @@ ThisBuild / scmInfo := Some(ScmInfo(
 
 ThisBuild / publishAsOSSProject := true
 
+ThisBuild / githubWorkflowBuildPreamble ++= Seq(
+  WorkflowStep.Run(
+    List(
+      """ssh-keygen -t rsa -N "passphrase" -f key_for_docker""",
+      "docker swarm init",
+      "docker stack deploy -c docker-compose.yml teststack"),
+    name = Some("Start zookeeper, kafka and sshd instances")),
+  WorkflowStep.Run(
+    List("it/scripts/run_test_data.sh"),
+    name = Some("Load integration test data")))
+
 lazy val IT = Tags.Tag("integrationTest")
 Global / concurrentRestrictions += Tags.exclusive(IT)
 
