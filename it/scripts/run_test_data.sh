@@ -4,8 +4,8 @@ docker node ls
 
 for node in $(docker node ls -q); do
   echo "Node $node"
-  if type -p docker-machine; then
-    eval $(docker-machine env "$node")
+  if [[ -x /tmp/docker-machine ]]; then
+    eval $(/tmp/docker-machine env "$node")
   else
     echo "Skipping docker-machine (not available)"
   fi

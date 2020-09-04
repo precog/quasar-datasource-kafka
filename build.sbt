@@ -21,7 +21,10 @@ ThisBuild / githubWorkflowBuildPreamble ++= Seq(
       "docker stack deploy -c docker-compose.yml teststack"),
     name = Some("Start zookeeper, kafka and sshd instances")),
   WorkflowStep.Run(
-    List("it/scripts/run_test_data.sh"),
+    List(
+      "base=https://github.com/docker/machine/releases/download/v0.16.0 && curl -L $base/docker-machine-$(uname -s)-$(uname " +
+        "-m) >/tmp/docker-machine && chmod +x /tmp/docker-machine",
+      "it/scripts/run_test_data.sh"),
     name = Some("Load integration test data")))
 
 lazy val IT = Tags.Tag("integrationTest")
