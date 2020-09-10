@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 
-docker node ls
+get_containers() {
+  docker container ps
+  mapfile -t < <(docker container ps -f "name=teststack_kafka" --format "{{.ID}}")
+}
 
-if [[ -x /tmp/docker-machine ]]; then
-  /tmp/docker-machine ls
-fi
+get_containers
 
-for node in $(docker node ls -q); do
-  echo "Node $node"
-  if [[ -x /tmp/docker-machine ]]; then
-    eval $(/tmp/docker-machine env "$node")
-  else
-    echo "Skipping docker-machine (not available)"
+COUNT=0
+while [[ ${#MAPFILE[@]} -eq 0 ]]; do
+  COUNT=$((COUNT + 1))
+  if [[ $COUNT -gt 10 ]]; then
+    echo >&2 "Unable to retrieve containers"
+    exit 1
   fi
-  docker node ps -f name=teststack_kafka "$node"
-  for service in $(docker node ps --format="{{.Name}}.{{.ID}}" --no-trunc -f name=teststack_kafka "$node"); do
-    echo "Loading test data on $service"
-    docker exec -it "$service" /bin/bash /run/secrets/test_data.sh
-  done
+  echo "No containers found, waiting..."
+  sleep 6
+  get_containers
+done
+
+for id in "${MAPFILE[@]}"; do
+  echo "Loading data on container $id"
+  docker exec -it $id /bin/bash /run/secrets/test_data.sh
 done
