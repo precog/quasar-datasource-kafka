@@ -2,6 +2,19 @@
 
 echo "Creating topics"
 
+COUNT=0
+"${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --list
+while [[ $? -ne 0 ]]; do
+  COUNT=$((COUNT + 1))
+  if [[ $COUNT -gt 12 ]]; then
+    echo >&2 "Kafka not started. Giving up."
+    exit 1
+  fi
+  echo "Kafka not started. Waiting."
+  sleep 5
+  "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --list
+done
+
 for topic in empty keyOnly valueOnly; do
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --create --topic "$topic" --partitions 1 --replication-factor 1
 done
