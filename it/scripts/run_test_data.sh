@@ -7,19 +7,20 @@ get_containers() {
 
 get_containers
 
+EXPECTED=2
 COUNT=0
-while [[ ${#MAPFILE[@]} -eq 0 ]]; do
+while [[ ${#MAPFILE[@]} -lt $EXPECTED ]]; do
   COUNT=$((COUNT + 1))
   if [[ $COUNT -gt 10 ]]; then
     echo >&2 "Unable to retrieve containers"
     exit 1
   fi
-  echo "No containers found, waiting..."
+  echo "${#MAPFILE[@]} containers found, expected $EXPECTED. Waiting..."
   sleep 6
   get_containers
 done
 
 for id in "${MAPFILE[@]}"; do
   echo "Loading data on container $id"
-  docker exec -it $id /bin/bash /run/secrets/test_data.sh
+  docker exec -t $id /bin/bash /run/secrets/test_data.sh
 done
