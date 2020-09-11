@@ -14,6 +14,13 @@
  * limitations under the License.
  */
 
+/* This file has been changed from its original version, as published in
+ * https://github.com/apache/kafka.
+ *
+ * See the NOTICE file distributed with this work for additional information regarding
+ * copyright ownership.
+ */
+
 package quasar.datasource.kafka.proxy;
 
 import java.net.InetAddress;
