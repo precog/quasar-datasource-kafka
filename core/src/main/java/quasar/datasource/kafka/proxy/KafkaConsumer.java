@@ -23,8 +23,7 @@
 
 package quasar.datasource.kafka.proxy;
 
-import java.lang.String;
-import java.lang.Object;
+import java.lang.*;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Collection;
