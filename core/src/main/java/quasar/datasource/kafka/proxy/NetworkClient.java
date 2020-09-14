@@ -23,6 +23,7 @@
 
 package quasar.datasource.kafka.proxy;
 
+import java.lang.*;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;

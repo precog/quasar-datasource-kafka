@@ -23,6 +23,7 @@
 
 package quasar.datasource.kafka.proxy;
 
+import java.lang.*;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
