@@ -57,3 +57,33 @@ Example
  }
 }
 ```
+
+## Testing
+
+The simplest way to test is using Nix system and run subset of `.travis.yml`. One time only, generate an ssh key:
+
+```bash
+$ ssh-keygen -t rsa -N "passphrase" -f key_for_docker,
+```
+
+Then, when you want to test, run this:
+
+```bash
+$ docker swarm init
+$ docker stack deploy -c docker-compose.yml teststack
+$ it/scripts/run_test_data.sh
+```
+
+It starts multiple containers:
++ sshd with `root:root` with `22222` ssh port;
++ kafka_local a self-contained zookeeper and kafka server, advertising "localhost" as broken name
+  and exposing port 9092 for non-tunneled integration testing;
++ kafka_ssh a self-contained zookeeper and kafka server.
+
+You can stop it afterwards with
+
+```bash
+$ docker stack rm teststack
+$ docker swarm leave --force  # Or keep it running if you are going to update the stack
+```
+

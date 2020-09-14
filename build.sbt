@@ -13,6 +13,17 @@ ThisBuild / scmInfo := Some(ScmInfo(
 
 ThisBuild / publishAsOSSProject := true
 
+ThisBuild / githubWorkflowBuildPreamble ++= Seq(
+  WorkflowStep.Run(
+    List(
+      """ssh-keygen -t rsa -N "passphrase" -f key_for_docker""",
+      "docker swarm init",
+      "docker stack deploy -c docker-compose.yml teststack"),
+    name = Some("Start zookeeper, kafka and sshd instances")),
+  WorkflowStep.Run(
+    List("it/scripts/run_test_data.sh"),
+    name = Some("Load integration test data")))
+
 lazy val IT = Tags.Tag("integrationTest")
 Global / concurrentRestrictions += Tags.exclusive(IT)
 
@@ -44,6 +55,7 @@ lazy val core = project
 
     quasarPluginDependencies ++= Seq(
       "com.github.fd4s"  %% "fs2-kafka"     % "1.0.0",
+      "com.jcraft"       %  "jsch"          % "0.1.55",
       "org.apache.kafka" %  "kafka-clients" % "2.5.0",
       "org.slf4s"        %% "slf4s-api"     % "1.7.25"),
 
@@ -71,7 +83,6 @@ lazy val it = project
     libraryDependencies ++= Seq(
       "com.precog"              %% "quasar-foundation"    % quasarVersion.value % Test classifier "tests",
       "io.argonaut"             %% "argonaut-jawn"        % "6.3.0-M2"          % Test,
-      "io.github.embeddedkafka" %% "embedded-kafka"       % "2.5.0"             % Test,
       "org.http4s"              %% "jawn-fs2"             % "1.0.0-RC2"         % Test,
       "org.slf4j"               %  "slf4j-simple"         % "1.7.25"            % Test,
       "org.specs2"              %% "specs2-core"          % specs2Version       % Test))

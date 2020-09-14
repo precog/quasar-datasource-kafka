@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  sshd:
+    image: rastasheep/ubuntu-sshd:18.04
+    ports:
+      - "22222:22"
+    secrets:
+      - source: authorized_keys
+        target: /root/.ssh/authorized_keys
+        mode: 0600
+
+  kafka_local:
+    image: spotify/kafka:latest
+    ports:
+      - "9092:9092"
+    environment:
+      ADVERTISED_HOST: localhost
+      KAFKA_BIN: /opt/kafka_2.11-0.10.1.0/bin
+    secrets:
+      - "test_data.sh"
+
+  kafka_ssh:
+    image: spotify/kafka:latest
+    environment:
+      ADVERTISED_HOST: kafka_ssh
+      KAFKA_BIN: /opt/kafka_2.11-0.10.1.0/bin
+    secrets:
+      - "test_data.sh"
+
+secrets:
+  authorized_keys:
+    file: ./key_for_docker.pub
+  "test_data.sh":
+    file: ./it/scripts/test_data.sh

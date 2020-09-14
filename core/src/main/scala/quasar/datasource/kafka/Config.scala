@@ -28,14 +28,21 @@ case class Config(
   bootstrapServers: NonEmptyList[String],
   groupId: String,
   topics: NonEmptyList[String],
+  tunnelConfig: Option[TunnelConfig],
   decoder: Decoder,
   format: DataFormat
 ) extends Product with Serializable {
   def isTopic(topic: String): Boolean = topics.exists(_ == topic)
 
-  // No sensitive information at this time
-  def sanitize: Config = this
-  def reconfigure(patch: Config): Either[Config, Config] = patch.asRight
+  def sanitize: Config = copy(tunnelConfig = tunnelConfig.map(_.sanitize))
+  def reconfigure(patch: Config): Either[Config, Config] = {
+    val reconfigured = (tunnelConfig, patch.tunnelConfig) match {
+      case (_, Some(newTc)) if newTc.auth.nonEmpty => Left(newTc.sanitize)
+      case (Some(tc), Some(newTc))                 => Right(Some(newTc.copy(auth = tc.auth)))
+      case (_, other)                              => Right(other)
+    }
+    reconfigured.bimap(tc => patch.copy(tunnelConfig = Some(tc)), mtc => patch.copy(tunnelConfig = mtc))
+  }
 }
 
 object Config {
@@ -61,14 +68,16 @@ object Config {
     ("bootstrapServers" := config.bootstrapServers) ->:
       ("groupId" := config.groupId) ->:
       ("topics" := config.topics) ->:
+      ("tunnelConfig" := config.tunnelConfig) ->:
       ("decoder" := config.decoder) ->:
       config.format.asJson
   }, (c => for {
     bootstrapServers <- (c --\ "bootstrapServers").as[NonEmptyList[String]]
     groupId <- (c --\ "groupId").as[String]
     topics <- (c --\ "topics").as[NonEmptyList[String]]
+    tunnelConfig <- (c --\ "tunnelConfig").as[Option[TunnelConfig]]
     decoder <- (c --\ "decoder").as[Decoder]
     format <- c.as[DataFormat]
-  } yield Config(bootstrapServers, groupId, topics, decoder, format)))
+  } yield Config(bootstrapServers, groupId, topics, tunnelConfig, decoder, format)))
 
 }

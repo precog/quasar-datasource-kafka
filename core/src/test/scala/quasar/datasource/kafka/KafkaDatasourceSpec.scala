@@ -152,6 +152,7 @@ object KafkaDatasourceSpec {
     groupId = "group",
     topics = NonEmptyList.of("a", "b", "c"),
     decoder = Decoder.rawValue,
+    tunnelConfig = None,
     format = DataFormat.ldjson)
 
 }

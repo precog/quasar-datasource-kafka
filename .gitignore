@@ -9,3 +9,7 @@ target/
 /scripts/closePR
 /scripts/publishAndTag
 /scripts/readVersion
+
+# Integration test SSH key
+key_for_docker.pub
+key_for_docker

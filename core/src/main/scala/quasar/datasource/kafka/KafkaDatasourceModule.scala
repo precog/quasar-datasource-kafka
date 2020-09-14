@@ -81,10 +81,10 @@ object KafkaDatasourceModule extends LightweightDatasourceModule {
     (implicit ec: ExecutionContext): Resource[F, Either[DatasourceError.InitializationError[Json], DS[F]]] = {
     config.as[Config].result match {
       case Right(kafkaConfig) =>
-
-        val kafkaConsumerBuilder = KafkaConsumerBuilder(kafkaConfig, kafkaConfig.decoder)
-        Resource.pure[F, Either[DatasourceError.InitializationError[Json], DS[F]]](
-          KafkaDatasource(kafkaConfig, kafkaConsumerBuilder).asRight)
+        for {
+          kafkaConsumerBuilder <- KafkaConsumerBuilder.resource(kafkaConfig, kafkaConfig.decoder)
+          datasource <- Resource.pure[F, DS[F]](KafkaDatasource(kafkaConfig, kafkaConsumerBuilder))
+        } yield datasource.asRight[DatasourceError.InitializationError[Json]]
 
       case Left((msg, _))  =>
         DatasourceError
