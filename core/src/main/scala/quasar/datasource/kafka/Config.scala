@@ -38,9 +38,8 @@ case class Config(
   def reconfigure(patch: Config): Either[Config, Config] = {
     val reconfigured = (tunnelConfig, patch.tunnelConfig) match {
       case (_, Some(newTc)) if newTc.auth.nonEmpty => Left(newTc.sanitize)
-      case (Some(tc), Some(newTc)) => Right(Some(newTc.copy(auth = tc.auth)))
-      case (None, other) => Right(other)
-      case (_, None) => Right(None)
+      case (Some(tc), Some(newTc))                 => Right(Some(newTc.copy(auth = tc.auth)))
+      case (_, other)                              => Right(other)
     }
     reconfigured.bimap(tc => patch.copy(tunnelConfig = Some(tc)), mtc => patch.copy(tunnelConfig = mtc))
   }
