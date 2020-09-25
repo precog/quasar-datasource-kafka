@@ -34,15 +34,21 @@ The configuration of the Kafka Datasource has the following JSON format:
     "escape": String
   }
   [, "compressionScheme": "gzip"]
+  [, "tunnelConfig": {
+    host: String,
+    port: Int,
+    auth: <PASS>
+  }]
 }
-
 ```
 
-*
-*
-*
++ `bootstrapServers` is an Array of Strings of the form "host:port"
++ `groupId` is the Kafka group id
++ `topics` are the Kafka topics to connect to
++ `decoder` indicates if the key (`"RawKey"`) or value (`"RawValue"`) of the Kafka object should be decoded
++ `auth` is of the form `{ "password": String }` | `{ "key": String, "passphrase": String }` where `auth.key` is content of private key file for ssh tunneling
 
-Example
+Example configuration
 
 ```json
 {
@@ -54,7 +60,12 @@ Example
    "type": "json",
    "variant": "line-delimited",
    "precise": false
- }
+ },
+ "tunnelConfig": {
+    host: "host_name",
+    port: 22222,
+    auth: { "password": "my_secret_password" }
+  }
 }
 ```
 
@@ -63,7 +74,7 @@ Example
 The simplest way to test is using Nix system and run subset of `.travis.yml`. One time only, generate an ssh key:
 
 ```bash
-$ ssh-keygen -t rsa -N "passphrase" -f key_for_docker,
+$ ssh-keygen -t rsa -N "passphrase" -f key_for_docker
 ```
 
 Then, when you want to test, run this:
