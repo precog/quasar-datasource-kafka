@@ -12,7 +12,7 @@ The configuration of the Kafka Datasource has the following JSON format:
 
 ```
 {
- "bootstrapServers": Array of Strings,
+ "bootstrapServers": Array of Strings "host:port",
  "groupId": String,
  "topics": Array of Strings,
  "decoder": < "RawKey" | "RawValue" >,
@@ -37,7 +37,7 @@ The configuration of the Kafka Datasource has the following JSON format:
   [, "tunnelConfig": {
     host: String,
     port: Int,
-    pass: <PASS>
+    auth: <PASS>
   }]
 }
 ```
@@ -46,7 +46,7 @@ The configuration of the Kafka Datasource has the following JSON format:
 + `groupId` is the Kafka group id
 + `topics` are the Kafka topics to connect to
 + `decoder` indicates if the key (`"RawKey"`) or value (`"RawValue"`) of the Kafka object should be decoded
-+ `pass` is of the form `{ "password": String }` | `{ "key": String, "passphrase": String }` where `pass.key` is content of private key file for ssh tunneling
++ `auth` is of the form `{ "password": String }` | `{ "key": String, "passphrase": String }` where `auth.key` is content of private key file for ssh tunneling
 
 Example configuration
 
@@ -64,7 +64,7 @@ Example configuration
  "tunnelConfig": {
     host: "host_name",
     port: 22222,
-    pass: { "password": "my_secret_password" }
+    auth: { "password": "my_secret_password" }
   }
 }
 ```
