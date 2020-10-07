@@ -24,6 +24,7 @@ import cats.syntax.functor._
 import com.jcraft.jsch._
 import fs2.kafka.{AutoOffsetReset, CommittableConsumerRecord, ConsumerSettings}
 import fs2.{Chunk, Stream}
+import quasar.concurrent._
 import quasar.connector.MonadResourceErr
 
 class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : MonadResourceErr](
@@ -58,15 +59,17 @@ object KafkaConsumerBuilder {
   import TunnelConfig._
   import Auth._
 
-  private lazy val blocker: Blocker = quasar.concurrent.Blocker.cached("kafka-datasource")
-
   def resource[F[_] : ConcurrentEffect : ContextShift : Timer : MonadResourceErr](
       config: Config,
       decoder: Decoder)
       : Resource[F, ConsumerBuilder[F]] = {
     val tunnelSessionResource = config.tunnelConfig match {
-      case Some(tunnelConfig) => viaTunnel(tunnelConfig, blocker).map(Some(_))
-      case None               => Resource.pure(None)
+      case Some(tunnelConfig) =>
+        Blocker.cached[F]("kafka-datasource")
+          .flatMap(viaTunnel(tunnelConfig, _))
+          .map(Some(_))
+
+      case None => Resource.pure(None)
     }
     for (tunnelSession <- tunnelSessionResource) yield new KafkaConsumerBuilder(config, tunnelSession, decoder)
   }
