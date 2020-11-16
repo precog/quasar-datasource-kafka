@@ -67,6 +67,7 @@ lazy val core = project
       "org.specs2"              %% "specs2-scalacheck"    % specs2Version       % Test,
       "org.specs2"              %% "specs2-scalaz"        % specs2Version       % Test))
   .enablePlugins(QuasarPlugin)
+  .evictToLocal("QUASAR_PATH", "connector", true)
 
 lazy val it = project
   .in(file("it"))
@@ -86,3 +87,4 @@ lazy val it = project
       "org.http4s"              %% "jawn-fs2"             % "1.0.0-RC2"         % Test,
       "org.slf4j"               %  "slf4j-simple"         % "1.7.25"            % Test,
       "org.specs2"              %% "specs2-core"          % specs2Version       % Test))
+  .evictToLocal("QUASAR_PATH", "connector", true)

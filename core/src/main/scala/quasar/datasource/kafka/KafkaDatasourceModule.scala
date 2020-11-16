@@ -31,7 +31,7 @@ import scalaz.NonEmptyList
 
 import java.util.UUID
 import scala.concurrent.ExecutionContext
-import scala.Option
+import scala.{Long, Option}
 import scala.util.{Either, Left, Right}
 
 object KafkaDatasourceModule extends LightweightDatasourceModule {
@@ -42,7 +42,7 @@ object KafkaDatasourceModule extends LightweightDatasourceModule {
     case Right(cfg) => cfg.sanitize.asJson
   }
 
-  def migrateConfig[F[_]: Sync](config: Json): F[Either[DatasourceError.ConfigurationError[Json], Json]] =
+  def migrateConfig[F[_]: Sync](from: Long, to: Long, config: Json): F[Either[DatasourceError.ConfigurationError[Json], Json]] =
     Sync[F].pure(Right(config))
 
   override def reconfigure(
