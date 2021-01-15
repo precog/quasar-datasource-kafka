@@ -16,8 +16,10 @@
 
 package quasar.datasource.kafka
 
+import slamdata.Predef._
+
 import cats.effect.Resource
 
 trait ConsumerBuilder[F[_]] {
-  def mkFullConsumer: Resource[F, Consumer[F]]
+  def mkFullConsumer(mp: Map[Int, Long]): Resource[F, Consumer[F]]
 }

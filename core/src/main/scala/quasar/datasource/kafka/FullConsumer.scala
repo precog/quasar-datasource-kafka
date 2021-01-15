@@ -35,6 +35,7 @@ import scala.collection.immutable.SortedSet
  * at the time it starts running.
  */
 class FullConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
+    initialOffsets: Map[Int, Long],
     settings: ConsumerSettings[F, K, V],
     decoder: RecordDecoder[F, K, V])
     extends Consumer[F] with Logging {
@@ -47,6 +48,13 @@ class FullConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
     consumerResource[F].using(settings) evalMap { consumer =>
       for {
         endOffsets <- assignNonEmptyPartitionsForTopic(consumer, topic)
+        _ <- endOffsets.toList.traverse_ { case (topicPartition, end) =>
+          val partitionId = topicPartition.partition()
+          val previous = initialOffsets.get(partitionId)
+          previous.traverse_ { (i: Long) =>
+            consumer.seek(topicPartition, i)
+          }
+        }
       } yield {
         if (endOffsets.nonEmpty) takeUntilEndOffsets(consumer.partitionedStream, endOffsets).flatMap(decoder)
         else Stream.empty
@@ -125,8 +133,9 @@ object FullConsumer {
     Order.by(tp => (tp.topic, tp.partition))
 
   def apply[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
+      offsets: Map[Int, Long],
       settings: ConsumerSettings[F, K, V],
       decoder: RecordDecoder[F, K, V])
       : Consumer[F] =
-    new FullConsumer(settings, decoder)
+    new FullConsumer(offsets, settings, decoder)
 }
