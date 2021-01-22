@@ -22,7 +22,6 @@ import argonaut.Argonaut._
 import argonaut._
 import cats.data.NonEmptyList
 import cats.syntax.either._
-import quasar.connector.DataFormat
 
 case class Config(
   bootstrapServers: NonEmptyList[String],
@@ -30,7 +29,6 @@ case class Config(
   topics: NonEmptyList[String],
   tunnelConfig: Option[TunnelConfig],
   decoder: Decoder,
-  format: DataFormat
 ) extends Product with Serializable {
   def isTopic(topic: String): Boolean = topics.exists(_ == topic)
 
@@ -70,14 +68,13 @@ object Config {
       ("topics" := config.topics) ->:
       ("tunnelConfig" := config.tunnelConfig) ->:
       ("decoder" := config.decoder) ->:
-      config.format.asJson
+      jEmptyObject
   }, (c => for {
     bootstrapServers <- (c --\ "bootstrapServers").as[NonEmptyList[String]]
     groupId <- (c --\ "groupId").as[String]
     topics <- (c --\ "topics").as[NonEmptyList[String]]
     tunnelConfig <- (c --\ "tunnelConfig").as[Option[TunnelConfig]]
     decoder <- (c --\ "decoder").as[Decoder]
-    format <- c.as[DataFormat]
-  } yield Config(bootstrapServers, groupId, topics, tunnelConfig, decoder, format)))
+  } yield Config(bootstrapServers, groupId, topics, tunnelConfig, decoder)))
 
 }

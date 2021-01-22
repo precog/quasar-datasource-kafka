@@ -18,26 +18,29 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
-import cats.{Applicative, Id}
+import cats.Id
 import cats.data.NonEmptyList
 import cats.effect._
+import cats.effect.concurrent.Deferred
 import cats.implicits._
 import fs2.Stream
 import quasar.ScalarStages
 import quasar.api.datasource.DatasourceType
-import quasar.api.push.OffsetKey
+import quasar.api.push.{OffsetKey, ExternalOffsetKey}
 import quasar.api.resource.ResourcePath.Root
 import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
 import quasar.connector.datasource.{BatchLoader, LightweightDatasource, Loader}
-import quasar.connector.{Offset, MonadResourceErr, QueryResult, ResourceError}
+import quasar.connector.{DataFormat, Offset, MonadResourceErr, QueryResult, ResourceError}
 import quasar.contrib.scalaz.MonadError_
 import quasar.qscript.InterpretedRead
 
 import scodec.{Attempt, Codec}
-import scodec.bits.{BitVector, ByteVector}
-import scodec.codecs.{variableSizeBytes, int32, int64, listOfN}
+import scodec.bits.ByteVector
+import scodec.codecs.{int32, int64, listOfN}
 
-final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
+import skolems.∃
+
+final class KafkaDatasource[F[_]: Concurrent: MonadResourceErr](
     config: Config,
     consumerBuilder: ConsumerBuilder[F])
     extends LightweightDatasource[Resource[F, ?], Stream[F, ?], QueryResult[F]]  {
@@ -51,7 +54,6 @@ final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
           seekConsumer(topic, stages, iRead.path, offset)
         }
       }))
-//      BatchLoader.Full((iRead: InterpretedRead[ResourcePath]) => evalPath(iRead, Function.tupled(fullConsumer)))))
 
   /**
    * If the path is `/topic` and `topic` is configured for this datasource, pass it on to `mkConsumer`.
@@ -66,23 +68,27 @@ final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
         MonadError_[F, ResourceError].raiseError(ResourceError.PathNotFound(iRead.path))
     }
 
-  /**
-   * Produces a consumer resource given a valid topic.
-   */
-  def fullConsumer(topic: String, stages: ScalarStages): Resource[F, QueryResult[F]] = {
+  private def seekConsumer(
+      topic: String,
+      stages: ScalarStages,
+      path: ResourcePath,
+      offset: Option[Offset])
+      : Resource[F, QueryResult[F]] = {
     for {
-      consumer <- consumerBuilder.mkFullConsumer(Map.empty)
-      bytes <- consumer.fetch(topic)
-    } yield QueryResult.typed(config.format, bytes, stages)
-  }
-
-  private def seekConsumer(topic: String, stages: ScalarStages, path: ResourcePath, offset: Option[Offset]): Resource[F, QueryResult[F]] = {
-    for {
-      bytes <- Resource.liftF(offset.traverse(getEncodedOffsets(path, _)))
-      mp <- Resource.liftF(bytes.traverse(decodeToMap(path, _)))
-      consumer <- consumerBuilder.mkFullConsumer(mp.getOrElse(Map.empty))
-      bytes <- consumer.fetch(topic)
-    } yield QueryResult.typed(config.format, bytes, stages)
+      offsetMap <- Resource.liftF {
+        offset.traverse(x => getEncodedOffsets(path, x).flatMap(decodeToMap(path, _)))
+      }
+      consumer <- consumerBuilder.build(offsetMap.getOrElse(Map.empty))
+      (offsets, bytes) <- consumer.fetch(topic)
+      offsetBytes <- Resource.liftF(encodeOffsets(path, offsets))
+      finished <- Resource.liftF(Deferred[F, Unit])
+    } yield {
+      val finishedResult = bytes.onFinalize(finished.complete(()))
+      val offsetKey = ∃(OffsetKey.Actual.external(ExternalOffsetKey(offsetBytes)))
+      val offsets = Stream.eval(finished.get).flatMap(_ => Stream.emit(offsetKey))
+      val notOffseted = QueryResult.Typed(DataFormat.ldjson, finishedResult, stages)
+      QueryResult.Offseted[F](offsets, notOffseted)
+    }
   }
 
   private def getEncodedOffsets(path: ResourcePath, offset: Offset): F[Array[Byte]] = {
@@ -95,7 +101,17 @@ final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
     }
   }
 
-  private def decodeToMap(path: ResourcePath, bytes: Array[Byte]): F[Map[Int, Long]] = {
+  private def encodeOffsets(path: ResourcePath, offs: Map[Int, Long]): F[Array[Byte]] =
+    mapCodec.encode(offs) match {
+      case Attempt.Successful(bv) => bv.toByteArray.pure[F]
+      case _ =>
+        MonadError_[F, ResourceError].raiseError(ResourceError.seekFailed(
+          path,
+          "An error occured while encoding offsets"))
+    }
+
+
+  private def decodeToMap(path: ResourcePath, bytes: Array[Byte]): F[Map[Int, Long]] =
     mapCodec.decode(ByteVector(bytes).toBitVector) match {
       case Attempt.Successful(s) => s.value.pure[F]
       case _ =>
@@ -103,7 +119,7 @@ final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
           path,
           "Kafka offset ExternalKey is incorrect"))
     }
-  }
+
 
   override def pathIsResource(path: ResourcePath): Resource[F, Boolean] =
     Resource.liftF(path.unsnoc match {
@@ -138,7 +154,7 @@ final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
 }
 
 object KafkaDatasource {
-  def apply[F[_]: Applicative: MonadResourceErr](
+  def apply[F[_]: Concurrent: MonadResourceErr](
       config: Config,
       consumerBuilder: ConsumerBuilder[F])
       : KafkaDatasource[F] =

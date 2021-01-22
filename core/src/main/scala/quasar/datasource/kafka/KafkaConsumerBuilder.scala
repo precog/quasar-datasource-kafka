@@ -26,6 +26,7 @@ import fs2.kafka.{AutoOffsetReset, CommittableConsumerRecord, ConsumerSettings}
 import fs2.{Chunk, Stream}
 import quasar.concurrent._
 import quasar.connector.MonadResourceErr
+import scala.collection.mutable.ArrayBuilder
 
 class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : MonadResourceErr](
     config: Config,
@@ -33,12 +34,13 @@ class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : Mona
     decoder: Decoder)
     extends ConsumerBuilder[F] {
 
-  def mkFullConsumer(offsets: Map[Int, Long]): Resource[F, Consumer[F]] = {
+  def build(offsets: Map[Int, Long]): Resource[F, Consumer[F]] = {
     val F: ConcurrentEffect[F] = ConcurrentEffect[F]
     Resource.liftF(F delay {
       val recordDecoder = decoder match {
         case Decoder.RawKey => KafkaConsumerBuilder.RawKey[F]
         case Decoder.RawValue => KafkaConsumerBuilder.RawValue[F]
+        case Decoder.AsJson => KafkaConsumerBuilder.AsJson[F]
       }
 
       val consumerSettings = ConsumerSettings[F, Array[Byte], Array[Byte]]
@@ -50,7 +52,7 @@ class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : Mona
         if (config.tunnelConfig.isEmpty) consumerSettings
         else consumerSettings.withCreateConsumer(ProxyKafkaConsumer(tunnelSession.orNull, _))
 
-      FullConsumer(offsets, proxyConsumerSettings, recordDecoder)
+      SeekConsumer(offsets, proxyConsumerSettings, recordDecoder)
     })
   }
 }
@@ -83,6 +85,23 @@ object KafkaConsumerBuilder {
   def RawValue[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
     (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) =>
       Stream.chunk(Chunk.bytes(Option(record.record.value).getOrElse(Array.empty)))
+
+  def AsJson[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
+    (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) => {
+      val value = Option(record.record.value).getOrElse("null".getBytes)
+      val key = Option(record.record.key).getOrElse("null".getBytes)
+      val prefixBytes = "{\"key\":".getBytes
+      val midBytes = ",\"value\":".getBytes
+      val suffixBytes = "}".getBytes
+      val arr = ArrayBuilder.make[Byte]
+        .++=(prefixBytes)
+        .++=(key)
+        .++=(midBytes)
+        .++=(value)
+        .++=(suffixBytes)
+      Stream.chunk(Chunk.bytes(arr.result))
+    }
+
 
   // Tunnel
 

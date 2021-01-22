@@ -21,5 +21,5 @@ import slamdata.Predef._
 import cats.effect.Resource
 
 trait ConsumerBuilder[F[_]] {
-  def mkFullConsumer(mp: Map[Int, Long]): Resource[F, Consumer[F]]
+  def build(mp: Map[Int, Long]): Resource[F, Consumer[F]]
 }

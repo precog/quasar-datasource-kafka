@@ -25,18 +25,22 @@ sealed trait Decoder
 object Decoder {
   case object RawKey extends Decoder
   case object RawValue extends Decoder
+  case object AsJson extends Decoder
 
   val rawKey: Decoder = RawKey
   val rawValue: Decoder = RawValue
+  val asJson: Decoder = AsJson
 
   implicit val decoderEJ: EncodeJson[Decoder] = EncodeJson {
     case RawKey   => "RawKey".asJson
     case RawValue => "RawValue".asJson
+    case AsJson => "AsJson".asJson
   }
 
   implicit val decoderDJ: DecodeJson[Decoder] = c => c.as[String] flatMap {
     case "RawKey"   => DecodeResult.ok(RawKey)
     case "RawValue" => DecodeResult.ok(RawValue)
+    case "AsJson"   => DecodeResult.ok(AsJson)
     case other      => DecodeResult.fail(s"Unknown decoder $other", c.history)
   }
 }

@@ -34,17 +34,17 @@ import scala.collection.immutable.SortedSet
  * A [[Consumer]] that fetches all messages available in a topic up to the last message
  * at the time it starts running.
  */
-class FullConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
+class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
     initialOffsets: Map[Int, Long],
     settings: ConsumerSettings[F, K, V],
     decoder: RecordDecoder[F, K, V])
     extends Consumer[F] with Logging {
 
-  import FullConsumer.topicPartitionOrder
+  import SeekConsumer.topicPartitionOrder
 
   val F: ConcurrentEffect[F] = ConcurrentEffect[F]
 
-  override def fetch(topic: String): Resource[F, Stream[F, Byte]] = {
+  override def fetch(topic: String): Resource[F, (Map[Int, Long], Stream[F, Byte])] = {
     consumerResource[F].using(settings) evalMap { consumer =>
       for {
         endOffsets <- assignNonEmptyPartitionsForTopic(consumer, topic)
@@ -56,8 +56,14 @@ class FullConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
           }
         }
       } yield {
-        if (endOffsets.nonEmpty) takeUntilEndOffsets(consumer.partitionedStream, endOffsets).flatMap(decoder)
-        else Stream.empty
+        val resultStream = if (endOffsets.nonEmpty) {
+          takeUntilEndOffsets(consumer.partitionedStream, endOffsets).flatMap(decoder)
+        }
+        else {
+          Stream.empty
+        }
+        val offsets = endOffsets.toList.map({case (k, v) => (k.partition(), v)}).toMap
+        (offsets, resultStream)
       }
     }
   }
@@ -127,7 +133,7 @@ class FullConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
   }
 }
 
-object FullConsumer {
+object SeekConsumer {
   /** Arbitrary order required by SortedSet, which is required by NonEmptySet, which is used by the API. */
   implicit val topicPartitionOrder: Order[TopicPartition] =
     Order.by(tp => (tp.topic, tp.partition))
@@ -137,5 +143,5 @@ object FullConsumer {
       settings: ConsumerSettings[F, K, V],
       decoder: RecordDecoder[F, K, V])
       : Consumer[F] =
-    new FullConsumer(offsets, settings, decoder)
+    new SeekConsumer(offsets, settings, decoder)
 }
