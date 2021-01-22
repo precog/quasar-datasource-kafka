@@ -88,6 +88,7 @@ object KafkaConsumerBuilder {
 
   def AsJson[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
     (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) => {
+      // here we suppose that both `value` and `key` bytes are valid jsons
       val value = Option(record.record.value).getOrElse("null".getBytes)
       val key = Option(record.record.key).getOrElse("null".getBytes)
       val prefixBytes = "{\"key\":".getBytes
