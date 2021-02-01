@@ -23,7 +23,6 @@ import org.specs2.mutable.Specification
 import argonaut.Argonaut._
 import argonaut._
 import cats.data.NonEmptyList
-import quasar.connector.DataFormat
 
 class ConfigSpec extends Specification {
 
@@ -59,36 +58,8 @@ class ConfigSpec extends Specification {
           groupId = "precog",
           topics = NonEmptyList.of("a", "b", "c"),
           decoder = Decoder.rawKey,
-          tunnelConfig = None,
-          format = DataFormat.ldjson))
+          tunnelConfig = None))
     }
-
-    "parses compressed formats" >> {
-      val s =
-        """
-          |{
-          | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
-          | "groupId": "precog",
-          | "topics": [ "a", "b", "c" ],
-          | "decoder": "RawKey",
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | },
-          | "compressionScheme": "gzip"
-          |}""".stripMargin
-
-      s.decode[Config] must beRight(
-        Config(
-          bootstrapServers = NonEmptyList.of("a.b.c.d:xyzzy","d.e.f.g:yzzyx"),
-          groupId = "precog",
-          topics = NonEmptyList.of("a", "b", "c"),
-          decoder = Decoder.rawKey,
-          tunnelConfig = None,
-          format = DataFormat.gzipped(DataFormat.ldjson)))
-    }
-
     "parses tunnel configuration" >> {
       val s1 =
         """
@@ -102,12 +73,7 @@ class ConfigSpec extends Specification {
           |   "port": 22,
           |   "auth": null
           | },
-          | "decoder": "RawKey",
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | }
+          | "decoder": "RawKey"
           |}""".stripMargin
 
       val s2 =
@@ -124,12 +90,7 @@ class ConfigSpec extends Specification {
           |     "password": "secret"
           |   }
           | },
-          | "decoder": "RawKey",
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | }
+          | "decoder": "RawKey"
           |}""".stripMargin
 
       val s3 =
@@ -147,12 +108,7 @@ class ConfigSpec extends Specification {
           |     "passphrase": "passphrase"
           |   }
           | },
-          | "decoder": "RawKey",
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | }
+          | "decoder": "RawKey"
           |}""".stripMargin
 
       s1.decode[Config] must beRight(
@@ -161,8 +117,7 @@ class ConfigSpec extends Specification {
           groupId = "precog",
           topics = NonEmptyList.of("a", "b", "c"),
           decoder = Decoder.rawKey,
-          tunnelConfig = Some(TunnelConfig("host", 22, "user", None)),
-          format = DataFormat.ldjson))
+          tunnelConfig = Some(TunnelConfig("host", 22, "user", None))))
 
       s2.decode[Config] must beRight(
         Config(
@@ -170,8 +125,7 @@ class ConfigSpec extends Specification {
           groupId = "precog",
           topics = NonEmptyList.of("a", "b", "c"),
           decoder = Decoder.rawKey,
-          tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))),
-          format = DataFormat.ldjson))
+          tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret"))))))
 
       s3.decode[Config] must beRight(
         Config(
@@ -179,8 +133,7 @@ class ConfigSpec extends Specification {
           groupId = "precog",
           topics = NonEmptyList.of("a", "b", "c"),
           decoder = Decoder.rawKey,
-          tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Identity("private_key", Some("passphrase"))))),
-          format = DataFormat.ldjson))
+          tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Identity("private_key", Some("passphrase")))))))
     }
 
     "fails on missing bootstrapServers" >> {
@@ -189,12 +142,7 @@ class ConfigSpec extends Specification {
           |{
           | "groupId": "precog",
           | "topics": [ "a", "b", "c" ],
-          | "decoder": "RawValue",
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | }
+          | "decoder": "RawValue"
           |}""".stripMargin
 
       s.decode[Config] must missField("bootstrapServers")
@@ -207,12 +155,7 @@ class ConfigSpec extends Specification {
           | "bootstrapServers": [],
           | "groupId": "precog",
           | "topics": [ "a", "b", "c" ],
-          | "decoder": "RawKey",
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | }
+          | "decoder": "RawKey"
           |}""".stripMargin
 
       s.decode[Config] must haveEmptyList("bootstrapServers")
@@ -224,12 +167,7 @@ class ConfigSpec extends Specification {
           |{
           | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
           | "topics": [ "a", "b", "c" ],
-          | "decoder": "RawValue",
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | }
+          | "decoder": "RawValue"
           |}""".stripMargin
 
       s.decode[Config] must missField("groupId")
@@ -241,12 +179,7 @@ class ConfigSpec extends Specification {
           |{
           | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
           | "groupId": "precog",
-          | "decoder": "RawKey",
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | }
+          | "decoder": "RawKey"
           |}""".stripMargin
 
       s.decode[Config] must missField("topics")
@@ -259,12 +192,7 @@ class ConfigSpec extends Specification {
           | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
           | "groupId": "precog",
           | "topics": [],
-          | "decoder": "RawValue",
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | }
+          | "decoder": "RawValue"
           |}""".stripMargin
 
       s.decode[Config] must haveEmptyList("topics")
@@ -276,28 +204,10 @@ class ConfigSpec extends Specification {
           |{
           | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
           | "groupId": "precog",
-          | "topics": [ "a", "b", "c" ],
-          | "format": {
-          |   "type": "json",
-          |   "variant": "line-delimited",
-          |   "precise": false
-          | }
+          | "topics": [ "a", "b", "c" ]
           |}""".stripMargin
 
       s.decode[Config] must missField("decoder")
-    }
-
-    "fails on missing format" >> {
-      val s =
-        """
-          |{
-          | "bootstrapServers": [ "a.b.c.d:xyzzy", "d.e.f.g:yzzyx" ],
-          | "groupId": "precog",
-          | "topics": [ "a", "b", "c" ],
-          | "decoder": "RawKey"
-          |}""".stripMargin
-
-      s.decode[Config] must missField("format")
     }
   }
 
@@ -308,8 +218,7 @@ class ConfigSpec extends Specification {
         groupId = "precog",
         topics = NonEmptyList.of("a", "b", "c"),
         decoder = Decoder.rawKey,
-        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))),
-        format = DataFormat.ldjson)
+        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))))
 
       c.sanitize.tunnelConfig must beSome(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("<REDACTED>"))))
     }
@@ -320,8 +229,7 @@ class ConfigSpec extends Specification {
         groupId = "precog",
         topics = NonEmptyList.of("a", "b", "c"),
         decoder = Decoder.rawKey,
-        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Identity("private_key", Some("passphrase"))))),
-        format = DataFormat.ldjson)
+        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Identity("private_key", Some("passphrase"))))))
 
       c.sanitize.tunnelConfig must
         beSome(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Identity("<REDACTED>", Some("<REDACTED>")))))
@@ -333,8 +241,7 @@ class ConfigSpec extends Specification {
         groupId = "precog",
         topics = NonEmptyList.of("a", "b", "c"),
         decoder = Decoder.rawValue,
-        tunnelConfig = None,
-        format = DataFormat.json)
+        tunnelConfig = None)
 
       c.sanitize mustEqual c
     }
@@ -347,24 +254,21 @@ class ConfigSpec extends Specification {
         groupId = "precog",
         topics = NonEmptyList.of("a", "b", "c"),
         decoder = Decoder.rawValue,
-        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))),
-        format = DataFormat.json)
+        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))))
 
       val patch = Config(
         bootstrapServers = NonEmptyList.of("w.x.y.z:abcd"),
         groupId = "precog2",
         topics = NonEmptyList.of("topic"),
         decoder = Decoder.rawValue,
-        tunnelConfig = Some(TunnelConfig("server", 22222, "other", None)),
-        format = DataFormat.json)
+        tunnelConfig = Some(TunnelConfig("server", 22222, "other", None)))
 
       val expected = Config(
         bootstrapServers = NonEmptyList.of("w.x.y.z:abcd"),
         groupId = "precog2",
         topics = NonEmptyList.of("topic"),
         decoder = Decoder.rawValue,
-        tunnelConfig = Some(TunnelConfig("server", 22222, "other", Some(TunnelConfig.Auth.Password("secret")))),
-        format = DataFormat.json)
+        tunnelConfig = Some(TunnelConfig("server", 22222, "other", Some(TunnelConfig.Auth.Password("secret")))))
 
       orig.reconfigure(patch) must beRight(expected)
     }
@@ -375,24 +279,21 @@ class ConfigSpec extends Specification {
         groupId = "precog",
         topics = NonEmptyList.of("a", "b", "c"),
         decoder = Decoder.rawValue,
-        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))),
-        format = DataFormat.json)
+        tunnelConfig = Some(TunnelConfig("host", 22, "user", Some(TunnelConfig.Auth.Password("secret")))))
 
       val patch = Config(
         bootstrapServers = NonEmptyList.of("w.x.y.z:abcd"),
         groupId = "precog2",
         topics = NonEmptyList.of("topic"),
         decoder = Decoder.rawValue,
-        tunnelConfig = Some(TunnelConfig("server", 22222, "other", Some(TunnelConfig.Auth.Identity("private_key", Some("passphrase"))))),
-        format = DataFormat.json)
+        tunnelConfig = Some(TunnelConfig("server", 22222, "other", Some(TunnelConfig.Auth.Identity("private_key", Some("passphrase"))))))
 
       val expected = Config(
         bootstrapServers = NonEmptyList.of("w.x.y.z:abcd"),
         groupId = "precog2",
         topics = NonEmptyList.of("topic"),
         decoder = Decoder.rawValue,
-        tunnelConfig = Some(TunnelConfig("server", 22222, "other", Some(TunnelConfig.Auth.Identity("<REDACTED>", Some("<REDACTED>"))))),
-        format = DataFormat.json)
+        tunnelConfig = Some(TunnelConfig("server", 22222, "other", Some(TunnelConfig.Auth.Identity("<REDACTED>", Some("<REDACTED>"))))))
 
       orig.reconfigure(patch) must beLeft(expected)
     }

@@ -21,7 +21,6 @@ import slamdata.Predef._
 import cats.Id
 import cats.data.NonEmptyList
 import cats.effect._
-import cats.effect.concurrent.Deferred
 import cats.implicits._
 import fs2.Stream
 import quasar.ScalarStages
@@ -30,15 +29,13 @@ import quasar.api.push.{OffsetKey, ExternalOffsetKey}
 import quasar.api.resource.ResourcePath.Root
 import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
 import quasar.connector.datasource.{BatchLoader, LightweightDatasource, Loader}
-import quasar.connector.{DataFormat, Offset, MonadResourceErr, QueryResult, ResourceError}
+import quasar.connector.{DataFormat, Offset, MonadResourceErr, QueryResult, ResourceError, ResultData}
 import quasar.contrib.scalaz.MonadError_
 import quasar.qscript.InterpretedRead
 
 import scodec.{Attempt, Codec}
 import scodec.bits.ByteVector
 import scodec.codecs.{int32, int64, listOfN}
-
-import skolems.∃
 
 final class KafkaDatasource[F[_]: Concurrent: MonadResourceErr](
     config: Config,
@@ -81,25 +78,24 @@ final class KafkaDatasource[F[_]: Concurrent: MonadResourceErr](
       consumer <- consumerBuilder.build(offsetMap.getOrElse(Map.empty))
       (offsets, bytes) <- consumer.fetch(topic)
       offsetBytes <- Resource.liftF(encodeOffsets(path, offsets))
-      finished <- Resource.liftF(Deferred[F, Unit])
     } yield {
-      val finishedResult = bytes.onFinalize(finished.complete(()))
-      val offsetKey = ∃(OffsetKey.Actual.external(ExternalOffsetKey(offsetBytes)))
-      val offsets = Stream.eval(finished.get).flatMap(_ => Stream.emit(offsetKey))
-      val notOffseted = QueryResult.Typed(DataFormat.ldjson, finishedResult, stages)
-      QueryResult.Offseted[F](offsets, notOffseted)
-    }
+      val chunked = bytes.chunks.map(Right(_))
+      val offsetted = Stream.emit(Left(ExternalOffsetKey(offsetBytes)))
+      val resultData = ResultData.Delimited(chunked ++ offsetted)
+      QueryResult.typed(DataFormat.ldjson, resultData, stages)
+   }
   }
 
   private def getEncodedOffsets(path: ResourcePath, offset: Offset): F[Array[Byte]] = {
-    val key: OffsetKey[Id, _] = offset.value.value
-    key match {
-      case OffsetKey.ExternalKey(ek) => ek.value.pure[F]
-      case _ => MonadError_[F, ResourceError].raiseError(ResourceError.seekFailed(
-        path,
-        "Kafka offset path must be ExternalKey"))
+    val eKey: OffsetKey[Id, _] = offset.value.value
+    (eKey, offset) match {
+      case (OffsetKey.ExternalKey(ek), Offset.External(_)) => ek.value.pure[F]
+      case _ =>
+        MonadError_[F, ResourceError].raiseError(ResourceError.seekFailed(
+          path,
+          "Kafka offset path must be ExternalKey"))
     }
-  }
+ }
 
   private def encodeOffsets(path: ResourcePath, offs: Map[Int, Long]): F[Array[Byte]] =
     mapCodec.encode(offs) match {
