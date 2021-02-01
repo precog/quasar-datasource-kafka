@@ -86,20 +86,23 @@ object KafkaConsumerBuilder {
     (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) =>
       Stream.chunk(Chunk.bytes(Option(record.record.value).getOrElse(Array.empty)))
 
+  val JsonPrefixBytes = "{\"key\":".getBytes
+  val JsonMidBytes = ",\"value\":".getBytes
+  val JsonSuffixBytes = "}".getBytes
   def AsJson[F[_]]: RecordDecoder[F, Array[Byte], Array[Byte]] =
     (record: CommittableConsumerRecord[F, Array[Byte], Array[Byte]]) => {
       // here we suppose that both `value` and `key` bytes are valid jsons
       val value = Option(record.record.value).getOrElse("null".getBytes)
       val key = Option(record.record.key).getOrElse("null".getBytes)
-      val prefixBytes = "{\"key\":".getBytes
-      val midBytes = ",\"value\":".getBytes
-      val suffixBytes = "}".getBytes
-      val arr = ArrayBuilder.make[Byte]
-        .++=(prefixBytes)
+      val sizeHint =
+        JsonPrefixBytes.length + JsonMidBytes.length + JsonSuffixBytes.length + value.length + key.length
+      val arr = new ArrayBuilder.ofByte
+      arr.sizeHint(sizeHint)
+      arr.++=(JsonPrefixBytes)
         .++=(key)
-        .++=(midBytes)
+        .++=(JsonMidBytes)
         .++=(value)
-        .++=(suffixBytes)
+        .++=(JsonSuffixBytes)
       Stream.chunk(Chunk.bytes(arr.result))
     }
 
