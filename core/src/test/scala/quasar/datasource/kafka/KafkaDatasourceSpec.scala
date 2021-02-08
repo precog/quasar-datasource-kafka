@@ -119,7 +119,7 @@ class KafkaDatasourceSpec extends DatasourceSpec[IO, Stream[IO, ?], ResourcePath
   def assertResultBytes(ds: Resource[IO, DS[IO]], path: ResourcePath, expected: Array[Byte]): IO[MatchResult[Any]] =
     ds.flatMap(_.loadFull(iRead(path)).value) use {
       case Some(QueryResult.Typed(_, data, ScalarStages.Id)) =>
-        data.compile.to(Array).map(_ must_=== expected)
+        data.data.compile.to(Array).map(_ must_=== expected)
 
       case _ =>
         IO(ko("Unexpected QueryResult"))
