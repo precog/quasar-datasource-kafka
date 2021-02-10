@@ -237,10 +237,10 @@ object KafkaDatasourceITSpec {
     useDatasource(cfg) { ds =>
       ds.evaluate(InterpretedRead(path, ScalarStages.Id)) use {
         case QueryResult.Typed(`ldJson`, bytes, ScalarStages.Id) =>
-          bytes.chunks.parseJson[Json](AsyncParser.ValueStream).compile.toList
+          bytes.data.chunks.parseJson[Json](AsyncParser.ValueStream).compile.toList
 
         case QueryResult.Typed(`awJson`, bytes, ScalarStages.Id) =>
-          bytes.chunks.parseJson[Json](AsyncParser.UnwrapArray).compile.toList
+          bytes.data.chunks.parseJson[Json](AsyncParser.UnwrapArray).compile.toList
 
         case QueryResult.Typed(format, _, ScalarStages.Id) =>
           IO.raiseError(new RuntimeException(s"Unknown format $format"))

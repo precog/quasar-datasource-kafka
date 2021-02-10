@@ -29,7 +29,7 @@ import quasar.api.datasource.DatasourceType
 import quasar.api.resource.ResourcePath.Root
 import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
 import quasar.connector.datasource.{BatchLoader, LightweightDatasource, Loader}
-import quasar.connector.{MonadResourceErr, QueryResult, ResourceError}
+import quasar.connector.{MonadResourceErr, QueryResult, ResourceError, ResultData}
 import quasar.contrib.scalaz.MonadError_
 import quasar.qscript.InterpretedRead
 
@@ -70,7 +70,7 @@ final class KafkaDatasource[F[_]: Applicative: MonadResourceErr](
     for {
       consumer <- consumerBuilder.mkFullConsumer
       bytes <- consumer.fetch(topic)
-    } yield QueryResult.typed(config.format, bytes, stages)
+    } yield QueryResult.typed(config.format, ResultData.Continuous(bytes), stages)
   }
 
   override def pathIsResource(path: ResourcePath): Resource[F, Boolean] =
