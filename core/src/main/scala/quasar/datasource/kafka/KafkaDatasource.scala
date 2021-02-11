@@ -18,14 +18,15 @@ package quasar.datasource.kafka
 
 import slamdata.Predef._
 
-import cats.Id
 import cats.data.NonEmptyList
 import cats.effect._
 import cats.implicits._
+
 import fs2.Stream
+
 import quasar.ScalarStages
 import quasar.api.datasource.DatasourceType
-import quasar.api.push.{OffsetKey, ExternalOffsetKey}
+import quasar.api.push.ExternalOffsetKey
 import quasar.api.resource.ResourcePath.Root
 import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
 import quasar.connector.datasource.{BatchLoader, LightweightDatasource, Loader}
@@ -87,9 +88,8 @@ final class KafkaDatasource[F[_]: Concurrent: MonadResourceErr](
   }
 
   private def getEncodedOffsets(path: ResourcePath, offset: Offset): F[Array[Byte]] = {
-    val eKey: OffsetKey[Id, _] = offset.value.value
-    (eKey, offset) match {
-      case (OffsetKey.ExternalKey(ek), Offset.External(_)) => ek.value.pure[F]
+    offset match {
+      case Offset.External(ek) => ek.value.pure[F]
       case _ =>
         MonadError_[F, ResourceError].raiseError(ResourceError.seekFailed(
           path,
