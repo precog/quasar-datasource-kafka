@@ -57,6 +57,7 @@ lazy val core = project
       "com.github.fd4s"  %% "fs2-kafka"     % "1.0.0",
       "com.jcraft"       %  "jsch"          % "0.1.55",
       "org.apache.kafka" %  "kafka-clients" % "2.5.0",
+      "org.scodec"       %% "scodec-bits"   % "1.1.20",
       "org.slf4s"        %% "slf4s-api"     % "1.7.25"),
 
     libraryDependencies ++= Seq(
@@ -68,6 +69,7 @@ lazy val core = project
       "org.specs2"              %% "specs2-scalaz"        % specs2Version       % Test))
   .enablePlugins(QuasarPlugin)
   .evictToLocal("QUASAR_PATH", "connector", true)
+  .evictToLocal("QUASAR_PATH", "api", true)
 
 lazy val it = project
   .in(file("it"))
@@ -88,3 +90,4 @@ lazy val it = project
       "org.slf4j"               %  "slf4j-simple"         % "1.7.25"            % Test,
       "org.specs2"              %% "specs2-core"          % specs2Version       % Test))
   .evictToLocal("QUASAR_PATH", "connector", true)
+  .evictToLocal("QUASAR_PATH", "api", true)

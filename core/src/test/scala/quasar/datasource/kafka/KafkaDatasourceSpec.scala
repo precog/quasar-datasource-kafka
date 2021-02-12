@@ -130,15 +130,14 @@ object KafkaDatasourceSpec {
   def mkDatasource(config: Config): Resource[IO, DS[IO]] = {
 
     def mockConsumerBuilder[F[_]: Applicative]: ConsumerBuilder[F] = new ConsumerBuilder[F] {
-      override def mkFullConsumer: Resource[F, Consumer[F]] = {
+      override def build(offsets: Offsets): Resource[F, Consumer[F]] = {
         Resource.pure[F, Consumer[F]] {
           (topic: String) => {
-            Resource.pure[F, Stream[F, Byte]] {
-              Stream.unfoldChunk(config.topics.toList.dropWhile(_ != topic)) {
-                case h :: t => Some((Chunk.bytes(h.getBytes), t))
-                case Nil    => None
-              }
+            val bytes = Stream.unfoldChunk(config.topics.toList.dropWhile(_ != topic)) {
+              case h :: t => Some((Chunk.bytes(h.getBytes), t))
+              case Nil    => None
             }
+            Resource.pure[F, (Offsets, Stream[F, Byte])]((offsets, bytes))
           }
         }
       }

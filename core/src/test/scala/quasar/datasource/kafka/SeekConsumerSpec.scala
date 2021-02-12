@@ -31,7 +31,7 @@ import quasar.datasource.kafka.TestImplicits._
 
 import scala.concurrent.duration._
 
-class FullConsumerSpec(implicit ec: ExecutionEnv) extends Specification with TerminationMatchers {
+class SeekConsumerSpec(implicit ec: ExecutionEnv) extends Specification with TerminationMatchers {
 
   "assignNonEmptyPartitionsForTopic" >> {
     "assigns all non empty partitions" >> {
@@ -53,7 +53,7 @@ class FullConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Ter
 
   "limitStream" >> {
     val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
-    val kafkaConsumer = new FullConsumer[IO, Array[Byte], Array[Byte]](settings, KafkaConsumerBuilder.RawKey)
+    val kafkaConsumer = new SeekConsumer[IO, Array[Byte], Array[Byte]](Map.empty, settings, KafkaConsumerBuilder.RawKey)
 
     "terminates stream once data from the sole substream is read" >> {
       val tp = new TopicPartition("topic", 0)
@@ -76,32 +76,45 @@ class FullConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Ter
 
       kafkaConsumer.takeUntilEndOffsets(stream, endOffsets).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
     }
-  }
 
-  "isOffsetLimit" >> {
-    val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
-    val kafkaConsumer = new FullConsumer[IO, Array[Byte], Array[Byte]](settings, KafkaConsumerBuilder.RawKey)
-    val tp1 = new TopicPartition("precog", 0)
-    val tp2 = new TopicPartition("precog", 1)
-    val tp3 = new TopicPartition("topic", 0)
-    val endOffsets = Map(tp1 -> 100L, tp2 -> 20L, tp3 -> 30L)
-    val entry: (String, String) = "key" -> "value"
+    "terminate stream when there previous offsets are greater or equal to current" >> {
+      val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
+      val consumer = new SeekConsumer[IO, Array[Byte], Array[Byte]](
+        Map(0 -> 12),
+        settings,
+        KafkaConsumerBuilder.RawKey)
+      val tp = new TopicPartition("topic", 0)
+      val endOffsetsLt = Map(tp -> 5L)
+      val endOffsetsEq = Map(tp -> 12L)
+      val mkRecord = mkCommittableConsumerRecord(tp, (_: Long), "key" -> "value")
+      val assignment = IO.pure(Stream.iterate[IO, Long](42)(_ + 1).map(mkRecord))
+      val stream = Stream.eval(assignment)
 
-    // TODO: test that isNotOffsetLimit can be used with `takeThrough`, instead of testing the values it returns
+      consumer.takeUntilEndOffsets(stream, endOffsetsLt).compile.toList.unsafeRunTimed(2.seconds).must {
+        beSome(List[Array[Byte]]())
+      }
 
-    "is true if record offset is less than end offset - 1" >> {
-      val record = mkCommittableConsumerRecord(tp1, 5L, entry)
-      kafkaConsumer.isNotOffsetLimit(record, endOffsets) must beTrue
+      consumer.takeUntilEndOffsets(stream, endOffsetsEq).compile.toList.unsafeRunTimed(2.seconds).must {
+        beSome(List[Array[Byte]]())
+      }
     }
+    "takes messages with offset more or equal to previous" >> {
+      val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
+      val consumer0 = new SeekConsumer[IO, Array[Byte], Array[Byte]](Map(0 -> 12), settings, KafkaConsumerBuilder.RawKey)
+      val consumer1 = new SeekConsumer[IO, Array[Byte], Array[Byte]](Map(0 -> 4), settings, KafkaConsumerBuilder.RawKey)
+      val tp = new TopicPartition("topic", 0)
+      val endOffsets = Map(tp -> 42L)
+      val mkRecord = (i: Long) => mkCommittableConsumerRecord(tp, i, i.toString -> s"value:$i")
+      val assignment = IO.pure(Stream.iterate[IO, Long](1L)(_ + 1).map(mkRecord))
+      val stream = Stream.eval(assignment)
 
-    "is false if record offset is equal to end offset - 1" >> {
-      val record = mkCommittableConsumerRecord(tp2, 19L, entry)
-      kafkaConsumer.isNotOffsetLimit(record, endOffsets) must beFalse
-    }
+      consumer0.takeUntilEndOffsets(stream, endOffsets).compile.toList.unsafeRunTimed(2.seconds) must beLike {
+        case Some(lst) => lst.length must_=== 30
+      }
 
-    "is true if record offset is more than end offset - 1" >> {
-      val record = mkCommittableConsumerRecord(tp3, 50L, entry)
-      kafkaConsumer.isNotOffsetLimit(record, endOffsets) must beFalse
+      consumer1.takeUntilEndOffsets(stream, endOffsets).compile.toList.unsafeRunTimed(2.seconds) must beLike {
+        case Some(lst) => lst.length must_=== 38
+      }
     }
   }
 

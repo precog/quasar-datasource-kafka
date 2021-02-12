@@ -33,7 +33,7 @@ class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : Mona
     decoder: Decoder)
     extends ConsumerBuilder[F] {
 
-  def mkFullConsumer: Resource[F, Consumer[F]] = {
+  def build(offsets: Offsets): Resource[F, Consumer[F]] = {
     val F: ConcurrentEffect[F] = ConcurrentEffect[F]
     Resource.liftF(F delay {
       val recordDecoder = decoder match {
@@ -50,7 +50,7 @@ class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : Mona
         if (config.tunnelConfig.isEmpty) consumerSettings
         else consumerSettings.withCreateConsumer(ProxyKafkaConsumer(tunnelSession.orNull, _))
 
-      FullConsumer(proxyConsumerSettings, recordDecoder)
+      SeekConsumer(offsets, proxyConsumerSettings, recordDecoder)
     })
   }
 }
