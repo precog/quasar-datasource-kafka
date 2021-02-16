@@ -25,7 +25,7 @@ import cats.Order
 import cats.data.NonEmptySet
 import cats.effect._
 import cats.implicits._
-import fs2.{Pipe, Pull, Stream}
+import fs2.Stream
 import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, KafkaConsumer, consumerResource}
 
 import scala.collection.immutable.SortedSet
@@ -49,7 +49,8 @@ class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
       for {
         endOffsets <- assignNonEmptyPartitionsForTopic(consumer, topic)
         _ <- endOffsets.toList.traverse_ { case (p, end) =>
-          // See `offsetPull` comments why `w - 1`
+          // `w - 1` because if `w` then in case if there is no new records
+          // CCR stream halts
           initialOffsets.get(p.partition()).traverse_(w => consumer.seek(p, w - 1))
         }
       } yield {
@@ -103,53 +104,25 @@ class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
       : Stream[F, CCR] =
     stream
       .take(endOffsets.size.toLong)
-      .map(_.through(offsetPipe(endOffsets)))
+      .map(_.takeThrough(isNotOffsetLimit(_, endOffsets)).filter(paddingFilter))
       .parJoin(endOffsets.size)
 
-  // Can't use `filter` since we need to stop stream from execution if no new records appeared
-  def offsetPipe(endOffsets: Map[TopicPartition, Long]): Pipe[F, CCR, CCR] =
-    stream => offsetPull(stream, endOffsets).stream
+  // we `seek` to initialOffset(pi) - 1, so, there should be one redundant record
+  def paddingFilter(ccr: CCR): Boolean =
+    ccr.record.offset + 1 > initialOffsets.get(ccr.record.partition).getOrElse(0L)
 
-  private def offsetPull(input: Stream[F, CCR], endOffsets: Map[TopicPartition, Long]): Pull[F, CCR, Unit] =
-    // if we `consumer.seek` to previous end and there is no new events, then this waits until new messages
-    // appear, that's why instead of `consumer.seek(p, w)` we do `consumer.seek(p, w - 1)`
-    input.pull.uncons1 flatMap {
-      case None =>
-        Pull.done
-      case Some((ccr, tail)) =>
-        val record = ccr.record
-        val topic = record.topic
-        val partition = record.partition
-        val topicPartition = new TopicPartition(topic, partition)
-        val previous = initialOffsets.get(partition).getOrElse(0L) - 1
-        // From endOffsets javadoc: "the offset of the last available message + 1"
-        val end = endOffsets(topicPartition) - 1
-        // No new events since previous push
-        if (end <= previous) {
-          log.trace(s"$topicPartition has no new element, previous offset: $previous")
-          Pull.done
-        }
-        // This is the very first record from we should ignore it, since it was already consumed by
-        // previous push.
-        else if (record.offset <= previous) {
-          log.trace(s"First Read offset is ignored ${record.offset} / $end from $topicPartition")
-          offsetPull(tail, endOffsets)
-        }
-        // New events are here, and they're as new as our offset request
-        else if (record.offset < end) {
-          log.trace(s"Read offset ${record.offset} / $end from $topicPartition")
-          Pull.output1(ccr) >> offsetPull(tail, endOffsets)
-        }
-        else if (record.offset === end) {
-          log.trace(s"Last Read offset ${record.offset} / $end from $topicPartition stop the stream")
-          // We can't just recurse here, since when there is no new messages, the stream waits for them
-          Pull.output1(ccr) >> Pull.done
-        }
-        // New events are here, but they're newer than end offset request
-        else {
-          Pull.done
-        }
-    }
+  def isNotOffsetLimit(
+      commitableRecord: CCR,
+      offsets: Map[TopicPartition, Long])
+      : Boolean = {
+    val record = commitableRecord.record
+    val topic = record.topic
+    val partition = record.partition
+    val topicPartition = new TopicPartition(topic, partition)
+    val end = offsets(topicPartition)
+    log.trace(s"Read offset ${record.offset} / ${end - 1} from $topicPartition")
+    record.offset < (end - 1)
+  }
 }
 
 object SeekConsumer {

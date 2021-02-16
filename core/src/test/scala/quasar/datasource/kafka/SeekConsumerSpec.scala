@@ -87,7 +87,7 @@ class SeekConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Ter
       val endOffsetsLt = Map(tp -> 5L)
       val endOffsetsEq = Map(tp -> 12L)
       val mkRecord = mkCommittableConsumerRecord(tp, (_: Long), "key" -> "value")
-      val assignment = IO.pure(Stream.iterate[IO, Long](42)(_ + 1).map(mkRecord))
+      val assignment = IO.pure(Stream.iterate[IO, Long](0)(_ + 1).map(mkRecord))
       val stream = Stream.eval(assignment)
 
       consumer.takeUntilEndOffsets(stream, endOffsetsLt).compile.toList.unsafeRunTimed(2.seconds).must {
