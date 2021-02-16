@@ -76,46 +76,6 @@ class SeekConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Ter
 
       kafkaConsumer.takeUntilEndOffsets(stream, endOffsets).compile.drain.unsafeRunSync() must terminate(sleep = 2.seconds)
     }
-
-    "terminate stream when there previous offsets are greater or equal to current" >> {
-      val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
-      val consumer = new SeekConsumer[IO, Array[Byte], Array[Byte]](
-        Map(0 -> 12),
-        settings,
-        KafkaConsumerBuilder.RawKey)
-      val tp = new TopicPartition("topic", 0)
-      val endOffsetsLt = Map(tp -> 5L)
-      val endOffsetsEq = Map(tp -> 12L)
-      val mkRecord = mkCommittableConsumerRecord(tp, (_: Long), "key" -> "value")
-      val assignment = IO.pure(Stream.iterate[IO, Long](0)(_ + 1).map(mkRecord))
-      val stream = Stream.eval(assignment)
-
-      consumer.takeUntilEndOffsets(stream, endOffsetsLt).compile.toList.unsafeRunTimed(2.seconds).must {
-        beSome(List[Array[Byte]]())
-      }
-
-      consumer.takeUntilEndOffsets(stream, endOffsetsEq).compile.toList.unsafeRunTimed(2.seconds).must {
-        beSome(List[Array[Byte]]())
-      }
-    }
-    "takes messages with offset more or equal to previous" >> {
-      val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
-      val consumer0 = new SeekConsumer[IO, Array[Byte], Array[Byte]](Map(0 -> 12), settings, KafkaConsumerBuilder.RawKey)
-      val consumer1 = new SeekConsumer[IO, Array[Byte], Array[Byte]](Map(0 -> 4), settings, KafkaConsumerBuilder.RawKey)
-      val tp = new TopicPartition("topic", 0)
-      val endOffsets = Map(tp -> 42L)
-      val mkRecord = (i: Long) => mkCommittableConsumerRecord(tp, i, i.toString -> s"value:$i")
-      val assignment = IO.pure(Stream.iterate[IO, Long](1L)(_ + 1).map(mkRecord))
-      val stream = Stream.eval(assignment)
-
-      consumer0.takeUntilEndOffsets(stream, endOffsets).compile.toList.unsafeRunTimed(2.seconds) must beLike {
-        case Some(lst) => lst.length must_=== 30
-      }
-
-      consumer1.takeUntilEndOffsets(stream, endOffsets).compile.toList.unsafeRunTimed(2.seconds) must beLike {
-        case Some(lst) => lst.length must_=== 38
-      }
-    }
   }
 
   def mkCommittableConsumerRecord(tp: TopicPartition, offset: Long, entry: (String, String))

@@ -49,9 +49,7 @@ class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
       for {
         endOffsets <- assignNonEmptyPartitionsForTopic(consumer, topic)
         _ <- endOffsets.toList.traverse_ { case (p, end) =>
-          // `w - 1` because if `w` then in case if there is no new records
-          // CCR stream halts
-          initialOffsets.get(p.partition()).traverse_(w => consumer.seek(p, w - 1))
+          initialOffsets.get(p.partition()).traverse_(w => consumer.seek(p, w ))
         }
       } yield {
         val resultStream = if (endOffsets.nonEmpty) {
@@ -60,8 +58,8 @@ class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
         else {
           Stream.empty
         }
-        val offsets = endOffsets.toList.map({case (k, v) => (k.partition(), v)}).toMap
-        (offsets, resultStream)
+        val newOffsets = endOffsets.toList.map({case (k, v) => (k.partition(), v)}).toMap
+        (initialOffsets ++ newOffsets, resultStream)
       }
     }
   }
@@ -79,10 +77,15 @@ class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
       topicPartitionSet = SortedSet(info.map(partitionInfoToTopicPartition): _*)
       _ <- F.delay(log.info(s"TopicPartition Set: $topicPartitionSet"))
       beginningOffsets <- consumer.beginningOffsets(topicPartitionSet)
-      _ <- F.delay(log.debug(s"${beginningOffsets.size} beginning offsets: $beginningOffsets"))
       endOffsets <- consumer.endOffsets(topicPartitionSet)
+      _ <- F.delay(log.debug(s"${beginningOffsets.size} beginning offsets in topic: $beginningOffsets"))
+      _ <- F.delay(log.debug(s"${initialOffsets.size} initialOffsets offsets: $initialOffsets"))
       _ <- F.delay(log.debug(s"${endOffsets.size} end offsets: $endOffsets"))
-      nonEmptyPartitions = topicPartitionSet.filterNot(tp => endOffsets(tp) == beginningOffsets(tp))
+      nonEmptyPartitions = topicPartitionSet filter { tp =>
+        val end = endOffsets(tp)
+        val start = initialOffsets.get(tp.partition()).getOrElse(beginningOffsets(tp))
+        end > start
+      }
       _ <- NonEmptySet.fromSet(nonEmptyPartitions).fold(F.unit)(consumer.assign)
       _ <- F.delay(log.info(s"Assigned partitions ${nonEmptyPartitions.mkString(" ")}"))
     } yield endOffsets.filterKeys(nonEmptyPartitions.contains)
@@ -95,7 +98,6 @@ class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
 
   /**
    * Emits all messages up to the last message of each partition given the map of end offsets.
-   *
    * @param endOffsets Map of all _non-empty_ topic/partitions to their end offsets (offset of last message + 1)
    */
   def takeUntilEndOffsets(
@@ -104,18 +106,14 @@ class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
       : Stream[F, CCR] =
     stream
       .take(endOffsets.size.toLong)
-      .map(_.takeThrough(isNotOffsetLimit(_, endOffsets)).filter(paddingFilter))
+      .map(_.takeThrough(isNotOffsetLimit(_, endOffsets)))
       .parJoin(endOffsets.size)
 
-  // we `seek` to initialOffset(pi) - 1, so, there should be one redundant record
-  def paddingFilter(ccr: CCR): Boolean =
-    ccr.record.offset + 1 > initialOffsets.get(ccr.record.partition).getOrElse(0L)
-
   def isNotOffsetLimit(
-      commitableRecord: CCR,
+      ccr: CCR,
       offsets: Map[TopicPartition, Long])
       : Boolean = {
-    val record = commitableRecord.record
+    val record = ccr.record
     val topic = record.topic
     val partition = record.partition
     val topicPartition = new TopicPartition(topic, partition)
