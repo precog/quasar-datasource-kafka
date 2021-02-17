@@ -78,6 +78,33 @@ class SeekConsumerSpec(implicit ec: ExecutionEnv) extends Specification with Ter
     }
   }
 
+  "isOffsetLimit" >> {
+    val settings = ConsumerSettings[IO, Array[Byte], Array[Byte]]
+    val kafkaConsumer = new SeekConsumer[IO, Array[Byte], Array[Byte]](Map.empty, settings, KafkaConsumerBuilder.RawKey)
+    val tp1 = new TopicPartition("precog", 0)
+    val tp2 = new TopicPartition("precog", 1)
+    val tp3 = new TopicPartition("topic", 0)
+    val endOffsets = Map(tp1 -> 100L, tp2 -> 20L, tp3 -> 30L)
+    val entry: (String, String) = "key" -> "value"
+
+    // TODO: test that isNotOffsetLimit can be used with `takeThrough`, instead of testing the values it returns
+
+    "is true if record offset is less than end offset - 1" >> {
+      val record = mkCommittableConsumerRecord(tp1, 5L, entry)
+      kafkaConsumer.isNotOffsetLimit(record, endOffsets) must beTrue
+    }
+
+    "is false if record offset is equal to end offset - 1" >> {
+      val record = mkCommittableConsumerRecord(tp2, 19L, entry)
+      kafkaConsumer.isNotOffsetLimit(record, endOffsets) must beFalse
+    }
+
+    "is true if record offset is more than end offset - 1" >> {
+      val record = mkCommittableConsumerRecord(tp3, 50L, entry)
+      kafkaConsumer.isNotOffsetLimit(record, endOffsets) must beFalse
+    }
+  }
+
   def mkCommittableConsumerRecord(tp: TopicPartition, offset: Long, entry: (String, String))
       : CommittableConsumerRecord[IO, Array[Byte], Array[Byte]] =
     CommittableConsumerRecord[IO, Array[Byte], Array[Byte]](
