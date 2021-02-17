@@ -49,7 +49,7 @@ class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
       for {
         endOffsets <- assignNonEmptyPartitionsForTopic(consumer, topic)
         _ <- endOffsets.toList.traverse_ { case (p, end) =>
-          initialOffsets.get(p.partition()).traverse_(w => consumer.seek(p, w ))
+          initialOffsets.get(p.partition()).traverse_(w => consumer.seek(p, w))
         }
       } yield {
         val resultStream = if (endOffsets.nonEmpty) {

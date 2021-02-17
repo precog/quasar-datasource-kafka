@@ -15,11 +15,11 @@ while [[ $? -ne 0 ]]; do
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --list
 done
 
-for topic in empty keyOnly valueOnly; do
+for topic in empty keyOnly valueOnly offsets-all; do
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --create --topic "$topic" --partitions 1 --replication-factor 1
-done
+don1
 
-for topic in keyAndValue partitioned; do
+for topic in keyAndValue partitioned offsets-partitioned; do
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --create --topic "$topic" --partitions 5 --replication-factor 1
 done
 
