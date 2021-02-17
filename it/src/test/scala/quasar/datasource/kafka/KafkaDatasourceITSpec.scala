@@ -169,7 +169,7 @@ class KafkaDatasourceITSpec extends Specification {
 
     "offsets" >> {
       def config =
-        ("topics" := List("offsets-partitionted")) ->:
+        ("topics" := List("offsetsPartitioned")) ->:
         ("decoder" := Decoder.rawValue.asJson) ->:
         baseConfig
 
@@ -183,8 +183,8 @@ class KafkaDatasourceITSpec extends Specification {
 
       "no new events" >> {
         val action = for {
-          (lst0, off0) <- evaluateIncremental(config, "offsets-partitionted", None)
-          (lst1, off1) <- evaluateIncremental(config, "offsets-partitionted", off0)
+          (lst0, off0) <- evaluateIncremental(config, "offsetsPartitioned", None)
+          (lst1, off1) <- evaluateIncremental(config, "offsetsPartitioned", off0)
         } yield (off0, off1, lst1)
 
         action.unsafeRunTimed(5.seconds) must beLike {
@@ -220,14 +220,14 @@ class KafkaDatasourceITSpec extends Specification {
       "new events only in some partitions" >> {
         val action = producerResource(producerSettings).use { producer =>
           val ioIO = producer.produce(ProducerRecords(List(
-            ProducerRecord("offsets-partitionted", "key".getBytes, "{\"foo\": 1}".getBytes).withPartition(0),
-            ProducerRecord("offsets-partitionted", "key0".getBytes, "{\"foo\": 2}".getBytes).withPartition(1))))
+            ProducerRecord("offsetsPartitioned", "key".getBytes, "{\"foo\": 1}".getBytes).withPartition(0),
+            ProducerRecord("offsetsPartitioned", "key0".getBytes, "{\"foo\": 2}".getBytes).withPartition(1))))
 
           for {
             // Just in case something was pushed to `offset-1` helpful for local tests
-            (lst0, off0) <- evaluateIncremental(config, "offsets-partitionted", None)
+            (lst0, off0) <- evaluateIncremental(config, "offsetsPartitioned", None)
             u <- ioIO.flatten
-            (lst1, off1) <- evaluateIncremental(config, "offsets-partitionted", off0)
+            (lst1, off1) <- evaluateIncremental(config, "offsetsPartitioned", off0)
           } yield (off0, off1, lst1)
         }
 
