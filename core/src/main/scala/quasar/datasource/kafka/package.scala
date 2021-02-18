@@ -23,4 +23,6 @@ import fs2.kafka.CommittableConsumerRecord
 
 package object kafka {
   type RecordDecoder[F[_], K, V] = CommittableConsumerRecord[F, K, V] => Stream[F, Byte]
+
+  type Offsets = Map[Int, Long]
 }

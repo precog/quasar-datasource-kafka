@@ -27,20 +27,29 @@ import argonaut.Argonaut._
 import argonaut.JawnParser.facade
 import argonaut._
 import cats.data.EitherT
+import cats.Eq
 import cats.effect.{IO, Resource}
+import cats.effect.concurrent.Ref
+import cats.implicits._
 import cats.kernel.instances.uuid._
 import jawnfs2._
+import fs2.{Pull, Stream, Chunk}
+import fs2.kafka.{producerResource, ProducerSettings, ProducerRecord, ProducerRecords}
 import quasar.api.datasource.DatasourceError.InitializationError
+import quasar.api.push.ExternalOffsetKey
 import quasar.api.resource.{ResourceName, ResourcePath}
-import quasar.connector.datasource.LightweightDatasourceModule.DS
+import quasar.connector.Offset
+import quasar.connector.datasource.{Loader, BatchLoader, LightweightDatasourceModule}, LightweightDatasourceModule.DS
 import quasar.connector.{ByteStore, DataFormat, QueryResult, ResourceError}
 import quasar.qscript.InterpretedRead
 import quasar.{NoopRateLimitUpdater, RateLimiter, ScalarStages}
 
+import scala.concurrent.duration._
+
+import TestImplicits._
 class KafkaDatasourceITSpec extends Specification {
-
+  sequential
   import KafkaDatasourceITSpec._
-
   "Datasource" >> {
     def baseConfig = Json(
       "bootstrapServers" := List(s"localhost:9092"),
@@ -157,8 +166,81 @@ class KafkaDatasourceITSpec extends Specification {
         }
       }
     }
-  }
 
+    "offsets" >> {
+      def config =
+        ("topics" := List("offsetsPartitioned")) ->:
+        ("decoder" := Decoder.rawValue.asJson) ->:
+        baseConfig
+
+      def configAll =
+        ("topics" := List("offsetsAll")) ->:
+        ("decoder" := Decoder.rawValue.asJson) ->:
+        baseConfig
+
+      val producerSettings = ProducerSettings[IO, Array[Byte], Array[Byte]]
+        .withBootstrapServers("localhost:9092")
+
+      "no new events" >> {
+        val action = for {
+          (lst0, off0) <- evaluateIncremental(config, "offsetsPartitioned", None)
+          (lst1, off1) <- evaluateIncremental(config, "offsetsPartitioned", off0)
+        } yield (off0, off1, lst1)
+
+        action.unsafeRunTimed(5.seconds) must beLike {
+          case Some((a, b, rs)) =>
+            a must beSome
+            b must beSome
+            rs must_== List()
+            Eq[Option[ExternalOffsetKey]].eqv(a, b) must beTrue
+        }
+      }
+      "new events in all partitions" >> {
+        val action = producerResource(producerSettings).use { producer =>
+          val ioIO = producer.produce(ProducerRecords(List(
+            ProducerRecord("offsetsAll", "key".getBytes, "{\"foo\": 1}".getBytes),
+            ProducerRecord("offsetsAll", "key0".getBytes, "{\"foo\": 2}".getBytes))))
+
+          for {
+            // Just in case something was pushed to `offset-1` helpful for local tests
+            (lst0, off0) <- evaluateIncremental(configAll, "offsetsAll", None)
+            u <- ioIO.flatten
+            (lst1, off1) <- evaluateIncremental(configAll, "offsetsAll", off0)
+          } yield (off0, off1, lst1)
+        }
+
+        action.unsafeRunTimed(5.seconds) must beLike {
+          case Some((off0, off1, jsons)) =>
+            off0 must beSome
+            off1 must beSome
+            jsons must_== List(Json("foo" := 1), Json("foo" := 2))
+            Eq[Option[ExternalOffsetKey]].eqv(off0, off1) must beFalse
+        }
+      }
+      "new events only in some partitions" >> {
+        val action = producerResource(producerSettings).use { producer =>
+          val ioIO = producer.produce(ProducerRecords(List(
+            ProducerRecord("offsetsPartitioned", "key".getBytes, "{\"foo\": 1}".getBytes).withPartition(0),
+            ProducerRecord("offsetsPartitioned", "key0".getBytes, "{\"foo\": 2}".getBytes).withPartition(1))))
+
+          for {
+            // Just in case something was pushed to `offset-1` helpful for local tests
+            (lst0, off0) <- evaluateIncremental(config, "offsetsPartitioned", None)
+            u <- ioIO.flatten
+            (lst1, off1) <- evaluateIncremental(config, "offsetsPartitioned", off0)
+          } yield (off0, off1, lst1)
+        }
+
+        action.unsafeRunTimed(5.seconds) must beLike {
+          case Some((off0, off1, jsons)) =>
+            off0 must beSome
+            off1 must beSome
+            jsons.toSet must_== Set(Json("foo" := 1), Json("foo" := 2))
+            Eq[Option[ExternalOffsetKey]].eqv(off0, off1) must beFalse
+        }
+      }
+    }
+  }
   "Tunnelled Datasource" >> {
     def baseConfig = Json(
       "bootstrapServers" := List("kafka_ssh:9092"),
@@ -225,10 +307,61 @@ object KafkaDatasourceITSpec {
   implicit final class DatasourceOps(val ds: DS[IO]) extends scala.AnyVal {
     def evaluate(read: InterpretedRead[ResourcePath]): Resource[IO, QueryResult[IO]] =
       ds.loadFull(read) getOrElseF Resource.liftF(IO.raiseError(new RuntimeException("No batch loader!")))
+
+    def incremental(read: InterpretedRead[ResourcePath], key: Option[ExternalOffsetKey])
+        : Resource[IO, QueryResult[IO]] = {
+      ds.loaders.toList.collectFirst({ case Loader.Batch(BatchLoader.Seek(l)) => l }) match {
+        case Some(l) => l(read, key.map(Offset.External(_)))
+        case None => Resource.liftF(IO.raiseError(new RuntimeException("No Seek loader")))
+      }
+    }
   }
 
   val ldJson: DataFormat = DataFormat.ldjson
   val awJson: DataFormat = DataFormat.json
+
+  def evaluateIncremental(cfg: Json, topicName: String, off: Option[ExternalOffsetKey])
+      : IO[(List[Json], Option[ExternalOffsetKey])] = {
+    val rDs =
+      Resource.liftF(RateLimiter[IO, UUID](
+        1.0,
+        IO.delay(UUID.randomUUID()),
+        NoopRateLimitUpdater[IO, UUID])).
+      flatMap(rl =>
+        KafkaDatasourceModule.lightweightDatasource[IO, UUID](cfg, rl, ByteStore.void[IO], _ => IO(None)))
+
+    val rQR = rDs flatMap {
+      case Left(e) =>
+        Resource.liftF(IO.raiseError(new RuntimeException(s"Incorrect config, $e")))
+      case Right(ds) =>
+        val iRead = InterpretedRead(ResourcePath.root() / ResourceName(topicName), ScalarStages.Id)
+        ds.incremental(iRead, off)
+    }
+
+    rQR use {
+      case QueryResult.Typed(_, rdata, _) =>
+        def loop(
+            s: Stream[IO, Either[ExternalOffsetKey, Chunk[Byte]]],
+            r: Ref[IO, Option[ExternalOffsetKey]])
+            : Pull[IO, Chunk[Byte], Unit] = s.pull.uncons1 flatMap {
+          case None =>
+            Pull.done
+          case Some((Left(e), tail)) =>
+            Pull.eval(r.set(Some(e))) >> loop(tail, r)
+          case Some((Right(c), tail)) =>
+            Pull.output1(c) >> loop(tail, r)
+
+        }
+        for {
+          r <- Ref.of[IO, Option[ExternalOffsetKey]](None)
+          lst <- loop(rdata.delimited, r).stream.parseJson[Json](AsyncParser.ValueStream).compile.toList
+          eo <- r.get
+        } yield (lst, eo)
+
+      case _ =>
+        IO.raiseError(new RuntimeException("evaluteIncremental can't work with Parsed or Stateful QueryResult"))
+    }
+  }
 
   def evaluateTyped(cfg: Json, name: String): IO[Either[InitializationError[Json], List[Json]]] =
     evaluateTyped(cfg, ResourcePath.root() / ResourceName(name))

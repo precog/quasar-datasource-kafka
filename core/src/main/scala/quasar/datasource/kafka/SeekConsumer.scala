@@ -34,22 +34,32 @@ import scala.collection.immutable.SortedSet
  * A [[Consumer]] that fetches all messages available in a topic up to the last message
  * at the time it starts running.
  */
-class FullConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
+class SeekConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
+    initialOffsets: Offsets,
     settings: ConsumerSettings[F, K, V],
     decoder: RecordDecoder[F, K, V])
     extends Consumer[F] with Logging {
 
-  import FullConsumer.topicPartitionOrder
+  import SeekConsumer.topicPartitionOrder
 
   val F: ConcurrentEffect[F] = ConcurrentEffect[F]
 
-  override def fetch(topic: String): Resource[F, Stream[F, Byte]] = {
+  override def fetch(topic: String): Resource[F, (Offsets, Stream[F, Byte])] = {
     consumerResource[F].using(settings) evalMap { consumer =>
       for {
         endOffsets <- assignNonEmptyPartitionsForTopic(consumer, topic)
+        _ <- endOffsets.toList.traverse_ { case (p, end) =>
+          initialOffsets.get(p.partition()).traverse_(w => consumer.seek(p, w))
+        }
       } yield {
-        if (endOffsets.nonEmpty) takeUntilEndOffsets(consumer.partitionedStream, endOffsets).flatMap(decoder)
-        else Stream.empty
+        val resultStream = if (endOffsets.nonEmpty) {
+          takeUntilEndOffsets(consumer.partitionedStream, endOffsets).flatMap(decoder)
+        }
+        else {
+          Stream.empty
+        }
+        val newOffsets = endOffsets.toList.map({case (k, v) => (k.partition(), v)}).toMap
+        (initialOffsets ++ newOffsets, resultStream)
       }
     }
   }
@@ -67,10 +77,15 @@ class FullConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
       topicPartitionSet = SortedSet(info.map(partitionInfoToTopicPartition): _*)
       _ <- F.delay(log.info(s"TopicPartition Set: $topicPartitionSet"))
       beginningOffsets <- consumer.beginningOffsets(topicPartitionSet)
-      _ <- F.delay(log.debug(s"${beginningOffsets.size} beginning offsets: $beginningOffsets"))
       endOffsets <- consumer.endOffsets(topicPartitionSet)
+      _ <- F.delay(log.debug(s"${beginningOffsets.size} beginning offsets in topic: $beginningOffsets"))
+      _ <- F.delay(log.debug(s"${initialOffsets.size} initialOffsets offsets: $initialOffsets"))
       _ <- F.delay(log.debug(s"${endOffsets.size} end offsets: $endOffsets"))
-      nonEmptyPartitions = topicPartitionSet.filterNot(tp => endOffsets(tp) == beginningOffsets(tp))
+      nonEmptyPartitions = topicPartitionSet filter { tp =>
+        val end = endOffsets(tp)
+        val start = initialOffsets.get(tp.partition()).getOrElse(beginningOffsets(tp))
+        end > start
+      }
       _ <- NonEmptySet.fromSet(nonEmptyPartitions).fold(F.unit)(consumer.assign)
       _ <- F.delay(log.info(s"Assigned partitions ${nonEmptyPartitions.mkString(" ")}"))
     } yield endOffsets.filterKeys(nonEmptyPartitions.contains)
@@ -79,54 +94,44 @@ class FullConsumer[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
   def partitionInfoToTopicPartition(info: PartitionInfo): TopicPartition =
     new TopicPartition(info.topic(), info.partition())
 
+  type CCR = CommittableConsumerRecord[F, K, V]
+
   /**
    * Emits all messages up to the last message of each partition given the map of end offsets.
-   *
    * @param endOffsets Map of all _non-empty_ topic/partitions to their end offsets (offset of last message + 1)
    */
   def takeUntilEndOffsets(
-      // TODO: it would make more sense to take a KafkaConsumer, but that can't be mocked on fs2-kafka 1.0.0.
-      stream: Stream[F, Stream[F, CommittableConsumerRecord[F, K, V]]],
+      stream: Stream[F, Stream[F, CCR]],
       endOffsets: Map[TopicPartition, Long])
-      : Stream[F, CommittableConsumerRecord[F, K, V]] = {
+      : Stream[F, CCR] =
     stream
-      .take(endOffsets.size.toLong) // assumes no automatic assignment; needs a filter otherwise
+      .take(endOffsets.size.toLong)
       .map(_.takeThrough(isNotOffsetLimit(_, endOffsets)))
       .parJoin(endOffsets.size)
-  }
 
-  /**
-   * True if there is at least one more record in the same topic/partition.
-   *
-   * Kafka API's `endOffsets` method returns the offset of the last available message plus one. Therefore,
-   * we return false if the current record corresponds to the offset of the last available message, or it
-   * is greater than that. The latter should not happen.
-   *
-   * @param committableRecord Last record read
-   * @param offsets map returned by Kafka's `endOffsets(Collection&lt;TopicPartition&gt;)` method
-   */
   def isNotOffsetLimit(
-      committableRecord: CommittableConsumerRecord[F, K, V],
+      ccr: CCR,
       offsets: Map[TopicPartition, Long])
       : Boolean = {
-    val record = committableRecord.record
+    val record = ccr.record
     val topic = record.topic
     val partition = record.partition
     val topicPartition = new TopicPartition(topic, partition)
     val end = offsets(topicPartition)
     log.trace(s"Read offset ${record.offset} / ${end - 1} from $topicPartition")
-    record.offset < (end - 1)  // From endOffsets javadoc: "the offset of the last available message + 1"
+    record.offset < (end - 1)
   }
 }
 
-object FullConsumer {
+object SeekConsumer {
   /** Arbitrary order required by SortedSet, which is required by NonEmptySet, which is used by the API. */
   implicit val topicPartitionOrder: Order[TopicPartition] =
     Order.by(tp => (tp.topic, tp.partition))
 
   def apply[F[_]: ConcurrentEffect: ContextShift: Timer, K, V](
+      initialOffsets: Offsets,
       settings: ConsumerSettings[F, K, V],
       decoder: RecordDecoder[F, K, V])
       : Consumer[F] =
-    new FullConsumer(settings, decoder)
+    new SeekConsumer(initialOffsets, settings, decoder)
 }

@@ -25,5 +25,5 @@ import fs2.Stream
  * Consumers will produce a stream fetching a topic.
  */
 trait Consumer[F[_]] {
-  def fetch(topic: String): Resource[F, Stream[F, Byte]]
+  def fetch(topic: String): Resource[F, (Offsets, Stream[F, Byte])]
 }

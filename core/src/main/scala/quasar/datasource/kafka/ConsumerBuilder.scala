@@ -19,5 +19,5 @@ package quasar.datasource.kafka
 import cats.effect.Resource
 
 trait ConsumerBuilder[F[_]] {
-  def mkFullConsumer: Resource[F, Consumer[F]]
+  def build(offsets: Offsets): Resource[F, Consumer[F]]
 }

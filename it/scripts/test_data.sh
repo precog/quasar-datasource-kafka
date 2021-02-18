@@ -15,11 +15,11 @@ while [[ $? -ne 0 ]]; do
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --list
 done
 
-for topic in empty keyOnly valueOnly; do
+for topic in empty keyOnly valueOnly offsetsAll; do
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --create --topic "$topic" --partitions 1 --replication-factor 1
 done
 
-for topic in keyAndValue partitioned; do
+for topic in keyAndValue partitioned offsetsPartitioned; do
   "${KAFKA_HOME}/bin/kafka-topics.sh" --zookeeper localhost --create --topic "$topic" --partitions 5 --replication-factor 1
 done
 
@@ -36,6 +36,13 @@ time "${KAFKA_HOME}/bin/kafka-console-producer.sh" --broker-list localhost:9092 
 [1, 2, 3]
 "string"
 EOF
+
+for topic in offsetsAll offsetsPartitioned; do
+  time "${KAFKA_HOME}/bin/kafka-console-producer.sh" --broker-list localhost:9092 --sync --topic "$topic" << EOF
+{"foo": 1}
+{"foo": 12}
+EOF
+done
 
 time "${KAFKA_HOME}/bin/kafka-console-producer.sh" --broker-list localhost:9092 --sync --topic keyAndValue \
   --property "parse.key=true" \
