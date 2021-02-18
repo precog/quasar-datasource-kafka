@@ -37,6 +37,13 @@ time "${KAFKA_HOME}/bin/kafka-console-producer.sh" --broker-list localhost:9092 
 "string"
 EOF
 
+for topic in offsetsAll offsetsPartitioned; do
+  time "${KAFKA_HOME}/bin/kafka-console-producer.sh" --broker-list localhost:9092 --sync --topic "$topic" << EOF
+{"foo": 1}
+{"foo": 12}
+EOF
+done
+
 time "${KAFKA_HOME}/bin/kafka-console-producer.sh" --broker-list localhost:9092 --sync --topic keyAndValue \
   --property "parse.key=true" \
   --property "key.separator=|" << EOF
