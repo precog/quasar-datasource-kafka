@@ -174,7 +174,7 @@ class KafkaDatasourceITSpec extends Specification {
         baseConfig
 
       def configAll =
-        ("topics" := List("offsets-all")) ->:
+        ("topics" := List("offsetsAll")) ->:
         ("decoder" := Decoder.rawValue.asJson) ->:
         baseConfig
 
@@ -198,14 +198,14 @@ class KafkaDatasourceITSpec extends Specification {
       "new events in all partitions" >> {
         val action = producerResource(producerSettings).use { producer =>
           val ioIO = producer.produce(ProducerRecords(List(
-            ProducerRecord("offsets-all", "key".getBytes, "{\"foo\": 1}".getBytes),
-            ProducerRecord("offsets-all", "key0".getBytes, "{\"foo\": 2}".getBytes))))
+            ProducerRecord("offsetsAll", "key".getBytes, "{\"foo\": 1}".getBytes),
+            ProducerRecord("offsetsAll", "key0".getBytes, "{\"foo\": 2}".getBytes))))
 
           for {
             // Just in case something was pushed to `offset-1` helpful for local tests
-            (lst0, off0) <- evaluateIncremental(configAll, "offsets-all", None)
+            (lst0, off0) <- evaluateIncremental(configAll, "offsetsAll", None)
             u <- ioIO.flatten
-            (lst1, off1) <- evaluateIncremental(configAll, "offsets-all", off0)
+            (lst1, off1) <- evaluateIncremental(configAll, "offsetsAll", off0)
           } yield (off0, off1, lst1)
         }
 
