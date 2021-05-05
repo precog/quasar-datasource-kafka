@@ -42,7 +42,7 @@ import quasar.connector.Offset
 import quasar.connector.datasource.{Loader, BatchLoader, LightweightDatasourceModule}, LightweightDatasourceModule.DS
 import quasar.connector.{ByteStore, DataFormat, QueryResult, ResourceError}
 import quasar.qscript.InterpretedRead
-import quasar.{NoopRateLimitUpdater, RateLimiter, ScalarStages}
+import quasar.{RateLimiter, ScalarStages}
 
 import scala.concurrent.duration._
 
@@ -323,11 +323,7 @@ object KafkaDatasourceITSpec {
   def evaluateIncremental(cfg: Json, topicName: String, off: Option[ExternalOffsetKey])
       : IO[(List[Json], Option[ExternalOffsetKey])] = {
     val rDs =
-      Resource.liftF(RateLimiter[IO, UUID](
-        1.0,
-        IO.delay(UUID.randomUUID()),
-        NoopRateLimitUpdater[IO, UUID])).
-      flatMap(rl =>
+      RateLimiter[IO, UUID](IO.delay(UUID.randomUUID())).flatMap(rl =>
         KafkaDatasourceModule.lightweightDatasource[IO, UUID](cfg, rl, ByteStore.void[IO], _ => IO(None)))
 
     val rQR = rDs flatMap {
@@ -385,10 +381,10 @@ object KafkaDatasourceITSpec {
   }
 
   def useDatasource[A](cfg: Json)(f: DS[IO] => IO[A]): IO[Either[InitializationError[Json], A]] = {
-    RateLimiter[IO, UUID](1.0, IO.delay(UUID.randomUUID()), NoopRateLimitUpdater[IO, UUID]).flatMap(rl =>
-      KafkaDatasourceModule.lightweightDatasource[IO, UUID](cfg, rl, ByteStore.void[IO], _ => IO(None)) use { r =>
+    RateLimiter[IO, UUID](IO.delay(UUID.randomUUID())).flatMap(rl =>
+      KafkaDatasourceModule.lightweightDatasource[IO, UUID](cfg, rl, ByteStore.void[IO], _ => IO(None))) use { r =>
         EitherT.fromEither[IO](r).semiflatMap(f).value
-      })
+      }
   }
 
   def q(s: String): String = s""""$s""""
