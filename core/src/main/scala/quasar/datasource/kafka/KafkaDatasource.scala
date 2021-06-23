@@ -47,7 +47,7 @@ final class KafkaDatasource[F[_]: Concurrent: MonadResourceErr](
   override def loaders: NonEmptyList[Loader[Resource[F, *], InterpretedRead[ResourcePath], QueryResult[F]]] =
     NonEmptyList.of(Loader.Batch(
       BatchLoader.Seek { (iRead, offset) =>
-        Resource.liftF(extractTopic(iRead)).flatMap { case (topic, stages) =>
+        Resource.eval(extractTopic(iRead)).flatMap { case (topic, stages) =>
           seekConsumer(topic, stages, iRead.path, offset)
         }
       }))
