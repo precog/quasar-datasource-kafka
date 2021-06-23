@@ -68,12 +68,12 @@ final class KafkaDatasource[F[_]: Concurrent: MonadResourceErr](
       path: ResourcePath,
       offset: Option[Offset])
       : Resource[F, QueryResult[F]] = for {
-    offsetMap <- Resource.liftF {
+    offsetMap <- Resource.eval {
       offset.traverse(x => getEncodedOffsets(path, x).flatMap(decodeToMap(path, _)))
     }
     consumer <- consumerBuilder.build(offsetMap.getOrElse(Map.empty))
     (offsets, bytes) <- consumer.fetch(topic)
-    offsetBytes <- Resource.liftF(encodeOffsets(path, offsets))
+    offsetBytes <- Resource.eval(encodeOffsets(path, offsets))
   } yield {
     val chunked = bytes.chunks.map(Right(_))
     val offseted = Stream.emit(Left(ExternalOffsetKey(offsetBytes)))
@@ -102,7 +102,7 @@ final class KafkaDatasource[F[_]: Concurrent: MonadResourceErr](
     }
 
   override def pathIsResource(path: ResourcePath): Resource[F, Boolean] =
-    Resource.liftF(path.unsnoc match {
+    Resource.eval(path.unsnoc match {
       case Some(Root -> ResourceName(topic)) =>
         config.isTopic(topic).pure[F]
       case _ =>
