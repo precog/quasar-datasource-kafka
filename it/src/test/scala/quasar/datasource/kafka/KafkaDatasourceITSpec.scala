@@ -306,13 +306,13 @@ object KafkaDatasourceITSpec {
 
   implicit final class DatasourceOps(val ds: DS[IO]) extends scala.AnyVal {
     def evaluate(read: InterpretedRead[ResourcePath]): Resource[IO, QueryResult[IO]] =
-      ds.loadFull(read) getOrElseF Resource.liftF(IO.raiseError(new RuntimeException("No batch loader!")))
+      ds.loadFull(read) getOrElseF Resource.eval(IO.raiseError(new RuntimeException("No batch loader!")))
 
     def incremental(read: InterpretedRead[ResourcePath], key: Option[ExternalOffsetKey])
         : Resource[IO, QueryResult[IO]] = {
       ds.loaders.toList.collectFirst({ case Loader.Batch(BatchLoader.Seek(l)) => l }) match {
         case Some(l) => l(read, key.map(Offset.External(_)))
-        case None => Resource.liftF(IO.raiseError(new RuntimeException("No Seek loader")))
+        case None => Resource.eval(IO.raiseError(new RuntimeException("No Seek loader")))
       }
     }
   }
@@ -328,7 +328,7 @@ object KafkaDatasourceITSpec {
 
     val rQR = rDs flatMap {
       case Left(e) =>
-        Resource.liftF(IO.raiseError(new RuntimeException(s"Incorrect config, $e")))
+        Resource.eval(IO.raiseError(new RuntimeException(s"Incorrect config, $e")))
       case Right(ds) =>
         val iRead = InterpretedRead(ResourcePath.root() / ResourceName(topicName), ScalarStages.Id)
         ds.incremental(iRead, off)

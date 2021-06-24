@@ -106,7 +106,7 @@ class KafkaDatasourceSpec extends DatasourceSpec[IO, Stream[IO, ?], ResourcePath
 
   def assertPrefixedChildPaths(path: ResourcePath, expected: List[(ResourceName, ResourcePathType)]): IO[MatchResult[Any]] =
     OptionT(datasource.flatMap(_.prefixedChildPaths(path)))
-      .getOrElseF(Resource.liftF(IO.raiseError(new Exception(s"Failed to list resources under $path"))))
+      .getOrElseF(Resource.eval(IO.raiseError(new Exception(s"Failed to list resources under $path"))))
       .use(gatherMultiple)
       .map(result => {
         // assert the same elements, with no duplicates

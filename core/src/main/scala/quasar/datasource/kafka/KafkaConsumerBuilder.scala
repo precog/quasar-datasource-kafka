@@ -35,7 +35,7 @@ class KafkaConsumerBuilder[F[_] : ConcurrentEffect : ContextShift : Timer : Mona
 
   def build(offsets: Offsets): Resource[F, Consumer[F]] = {
     val F: ConcurrentEffect[F] = ConcurrentEffect[F]
-    Resource.liftF(F delay {
+    Resource.eval(F delay {
       val recordDecoder = decoder match {
         case Decoder.RawKey => KafkaConsumerBuilder.RawKey[F]
         case Decoder.RawValue => KafkaConsumerBuilder.RawValue[F]
