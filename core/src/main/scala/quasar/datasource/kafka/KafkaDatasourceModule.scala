@@ -24,8 +24,8 @@ import cats.kernel.Hash
 import quasar.RateLimiting
 import quasar.api.datasource.DatasourceError.InitializationError
 import quasar.api.datasource.{DatasourceError, DatasourceType}
-import quasar.connector.datasource.LightweightDatasourceModule.DS
-import quasar.connector.datasource.{LightweightDatasourceModule, Reconfiguration}
+import quasar.connector.datasource.DatasourceModule.DS
+import quasar.connector.datasource.{DatasourceModule, Reconfiguration}
 import quasar.connector.{ByteStore, MonadResourceErr, ExternalCredentials}
 import scalaz.NonEmptyList
 
@@ -34,7 +34,7 @@ import scala.concurrent.ExecutionContext
 import scala.{Long, Option}
 import scala.util.{Either, Left, Right}
 
-object KafkaDatasourceModule extends LightweightDatasourceModule {
+object KafkaDatasourceModule extends DatasourceModule {
   override def kind: DatasourceType = DatasourceType("kafka", 1L)
 
   override def sanitizeConfig(config: Json): Json = config.as[Config].result match {
@@ -73,7 +73,7 @@ object KafkaDatasourceModule extends LightweightDatasourceModule {
     back.tupleLeft(Reconfiguration.Reset)
   }
 
-  override def lightweightDatasource[F[_]: ConcurrentEffect: ContextShift: MonadResourceErr: Timer, A: Hash](
+  override def datasource[F[_]: ConcurrentEffect: ContextShift: MonadResourceErr: Timer, A: Hash](
     config: Json,
     rateLimiting: RateLimiting[F, A],
     byteStore: ByteStore[F],
@@ -89,7 +89,7 @@ object KafkaDatasourceModule extends LightweightDatasourceModule {
       case Left((msg, _))  =>
         DatasourceError
           .invalidConfiguration[Json, InitializationError[Json]](kind, sanitizeConfig(config), NonEmptyList(msg))
-          .asLeft[LightweightDatasourceModule.DS[F]]
+          .asLeft[DatasourceModule.DS[F]]
           .pure[Resource[F, ?]]
 
     }

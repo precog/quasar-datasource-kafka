@@ -30,7 +30,7 @@ import quasar.ScalarStages
 import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
 import quasar.connector._
 import quasar.connector.datasource.DatasourceSpec
-import quasar.connector.datasource.LightweightDatasourceModule.DS
+import quasar.connector.datasource.DatasourceModule.DS
 import quasar.datasource.kafka.TestImplicits._
 import quasar.qscript.InterpretedRead
 import shims.applicativeToScalaz

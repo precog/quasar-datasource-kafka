@@ -29,7 +29,7 @@ import quasar.api.datasource.DatasourceType
 import quasar.api.push.ExternalOffsetKey
 import quasar.api.resource.ResourcePath.Root
 import quasar.api.resource.{ResourceName, ResourcePath, ResourcePathType}
-import quasar.connector.datasource.{BatchLoader, LightweightDatasource, Loader}
+import quasar.connector.datasource.{BatchLoader, DatasourceModule, Loader}
 import quasar.connector.{MonadResourceErr, QueryResult, ResourceError, ResultData, Offset}
 import quasar.qscript.InterpretedRead
 
@@ -40,7 +40,7 @@ import scodec.codecs.{int32, int64, listOfN}
 final class KafkaDatasource[F[_]: Concurrent: MonadResourceErr](
     config: Config,
     consumerBuilder: ConsumerBuilder[F])
-    extends LightweightDatasource[Resource[F, ?], Stream[F, ?], QueryResult[F]]  {
+    extends DatasourceModule.DS[F] {
 
   override def kind: DatasourceType = KafkaDatasourceModule.kind
 
