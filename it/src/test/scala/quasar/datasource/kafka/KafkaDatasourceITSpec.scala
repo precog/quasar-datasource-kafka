@@ -39,7 +39,7 @@ import quasar.api.datasource.DatasourceError.InitializationError
 import quasar.api.push.ExternalOffsetKey
 import quasar.api.resource.{ResourceName, ResourcePath}
 import quasar.connector.Offset
-import quasar.connector.datasource.{Loader, BatchLoader, LightweightDatasourceModule}, LightweightDatasourceModule.DS
+import quasar.connector.datasource.{Loader, BatchLoader, DatasourceModule}, DatasourceModule.DS
 import quasar.connector.{ByteStore, DataFormat, QueryResult, ResourceError}
 import quasar.qscript.InterpretedRead
 import quasar.{RateLimiter, ScalarStages}
@@ -324,7 +324,7 @@ object KafkaDatasourceITSpec {
       : IO[(List[Json], Option[ExternalOffsetKey])] = {
     val rDs =
       RateLimiter[IO, UUID](IO.delay(UUID.randomUUID())).flatMap(rl =>
-        KafkaDatasourceModule.lightweightDatasource[IO, UUID](cfg, rl, ByteStore.void[IO], _ => IO(None)))
+        KafkaDatasourceModule.datasource[IO, UUID](cfg, rl, ByteStore.void[IO], _ => IO(None)))
 
     val rQR = rDs flatMap {
       case Left(e) =>
@@ -382,7 +382,7 @@ object KafkaDatasourceITSpec {
 
   def useDatasource[A](cfg: Json)(f: DS[IO] => IO[A]): IO[Either[InitializationError[Json], A]] = {
     RateLimiter[IO, UUID](IO.delay(UUID.randomUUID())).flatMap(rl =>
-      KafkaDatasourceModule.lightweightDatasource[IO, UUID](cfg, rl, ByteStore.void[IO], _ => IO(None))) use { r =>
+      KafkaDatasourceModule.datasource[IO, UUID](cfg, rl, ByteStore.void[IO], _ => IO(None))) use { r =>
         EitherT.fromEither[IO](r).semiflatMap(f).value
       }
   }
