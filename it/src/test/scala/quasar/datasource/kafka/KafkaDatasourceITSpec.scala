@@ -40,13 +40,14 @@ import quasar.api.push.ExternalOffsetKey
 import quasar.api.resource.{ResourceName, ResourcePath}
 import quasar.connector.Offset
 import quasar.connector.datasource.{Loader, BatchLoader, DatasourceModule}, DatasourceModule.DS
-import quasar.connector.{ByteStore, DataFormat, QueryResult, ResourceError}
+import quasar.connector.{ByteStore, DataFormat, QueryResult, ResourceError, ResultData}
 import quasar.qscript.InterpretedRead
 import quasar.{RateLimiter, ScalarStages}
 
 import scala.concurrent.duration._
 
 import TestImplicits._
+
 class KafkaDatasourceITSpec extends Specification {
   sequential
   import KafkaDatasourceITSpec._
@@ -337,14 +338,14 @@ object KafkaDatasourceITSpec {
     rQR use {
       case QueryResult.Typed(_, rdata, _) =>
         def loop(
-            s: Stream[IO, Either[ExternalOffsetKey, Chunk[Byte]]],
+            s: Stream[IO, ResultData.Part[Byte]],
             r: Ref[IO, Option[ExternalOffsetKey]])
             : Pull[IO, Chunk[Byte], Unit] = s.pull.uncons1 flatMap {
-          case None =>
+          case None | Some((ResultData.Part.ExternalIdentities(_), _)) =>
             Pull.done
-          case Some((Left(e), tail)) =>
+          case Some((ResultData.Part.ExternalOffsetKey(e), tail)) =>
             Pull.eval(r.set(Some(e))) >> loop(tail, r)
-          case Some((Right(c), tail)) =>
+          case Some((ResultData.Part.Output(c), tail)) =>
             Pull.output1(c) >> loop(tail, r)
 
         }
