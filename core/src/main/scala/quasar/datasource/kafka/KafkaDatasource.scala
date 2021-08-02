@@ -75,8 +75,8 @@ final class KafkaDatasource[F[_]: Concurrent: MonadResourceErr](
     (offsets, bytes) <- consumer.fetch(topic)
     offsetBytes <- Resource.eval(encodeOffsets(path, offsets))
   } yield {
-    val chunked = bytes.chunks.map(Right(_))
-    val offseted = Stream.emit(Left(ExternalOffsetKey(offsetBytes)))
+    val chunked = bytes.chunks.map(ResultData.Part.Output(_))
+    val offseted = Stream.emit(ResultData.Part.ExternalOffsetKey(ExternalOffsetKey(offsetBytes)))
     val resultData = ResultData.Delimited(chunked ++ offseted)
     QueryResult.typed(config.format, resultData, stages)
   }
